@@ -10,8 +10,8 @@
 """
 import sys
 
-from pkg_resources import require, VersionConflict
-from setuptools import setup, find_packages
+from pkg_resources import VersionConflict, require
+from setuptools import find_packages, setup
 
 try:
     require("setuptools>=38.3")
@@ -68,6 +68,6 @@ setup(
     test_suite="tests",
     tests_require=tests_require,
     url="https://github.com/TUDelft-CITG/openclsim",
-    version="1.2.2",
+    version="v1.3.0a10",
     zip_safe=False,
 )
