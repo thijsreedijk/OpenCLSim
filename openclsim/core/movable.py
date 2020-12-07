@@ -35,26 +35,16 @@ class Movable(SimpyObject, Locatable):
         else:
             return -1
 
-    def move(self, destination, activity_name, engine_order=1.0, duration=None):
+    def move(self, destination, engine_order=1.0, duration=None):
         """
         Determine distance between origin and destination.
 
         Yield the time it takes to travel based on flow properties and load factor of the flow.
         """
-
-        origin_name = getattr(self, "name", "undefined")
-        destination_name = getattr(destination, "name", "undefined")
-        message = (
-            f"move activity {activity_name} of {origin_name} to {destination_name}"
-        )
-
         # Log the start event
         self.log_entry(
-            message,
             self.env.now,
-            self.get_container_level(),
-            self.geometry,
-            self.ActivityID,
+            self.activity_id,
             LogState.START,
         )
 
@@ -77,11 +67,8 @@ class Movable(SimpyObject, Locatable):
 
         # Log the stop event
         self.log_entry(
-            message,
             self.env.now,
-            self.get_container_level(),
-            self.geometry,
-            self.ActivityID,
+            self.activity_id,
             LogState.STOP,
         )
 

@@ -56,41 +56,39 @@ class MoveActivity(GenericActivity):
         engine_order: optional parameter specifying at what percentage of the maximum speed the mover should sail.
                     for example, engine_order=0.5 corresponds to sailing at 50% of max speed
         """
-        message = "move activity {} of {} to {}".format(
-            self.name, self.mover.name, self.destination.name
-        )
         yield from self._request_resource(self.requested_resources, self.mover.resource)
 
         start_time = env.now
         args_data = {
             "env": env,
             "activity_log": activity_log,
-            "message": message,
             "activity": self,
         }
         yield from self.pre_process(args_data)
 
         activity_log.log_entry(
-            message,
-            env.now,
-            -1,
-            self.mover.geometry,
-            activity_log.id,
-            core.LogState.START,
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.START,
         )
 
         start_mover = env.now
-        self.mover.ActivityID = activity_log.id
+        self.mover.activity_id = activity_log.id
         yield from self.mover.move(
             destination=self.destination,
             engine_order=1,
             duration=self.duration,
-            activity_name=self.name,
+        )
+
+        activity_log.log_entry(
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.STOP,
         )
 
         args_data["start_preprocessing"] = start_time
         args_data["start_activity"] = start_mover
-        self.post_process(**args_data)
+        yield from self.post_process(**args_data)
 
         self._release_resource(
             self.requested_resources, self.mover.resource, self.keep_resources
@@ -101,12 +99,3 @@ class MoveActivity(GenericActivity):
         # which will result in triggered but not processed events to be taken care of before further progressing
         # maybe there is a better way of doing it, but his option works for now.
         yield env.timeout(0)
-
-        activity_log.log_entry(
-            message,
-            env.now,
-            -1,
-            self.mover.geometry,
-            activity_log.id,
-            core.LogState.STOP,
-        )

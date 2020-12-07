@@ -16,12 +16,14 @@ class BasicActivity(GenericActivity):
                  by default will be to start immediately
     """
 
-    def __init__(self, duration, additional_logs=[], show=False, *args, **kwargs):
+    def __init__(self, duration, additional_logs=None, show=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         """Initialization"""
 
         self.print = show
         self.duration = duration
+        if additional_logs is None:
+            additional_logs = []
         self.additional_logs = additional_logs
         if not self.postpone_start:
             self.start()
@@ -49,13 +51,11 @@ class BasicActivity(GenericActivity):
                     the sub_processes will be executed sequentially, in the order in which they are given as long
                     as the stop_event has not occurred.
         """
-        message = f"Basic activity {self.name}"
 
         start_time = env.now
         args_data = {
             "env": env,
             "activity_log": activity_log,
-            "message": message,
             "activity": self,
         }
         yield from self.pre_process(args_data)
@@ -63,44 +63,35 @@ class BasicActivity(GenericActivity):
         start_basic = env.now
 
         activity_log.log_entry(
-            self.name,
-            env.now,
-            self.duration,
-            None,
-            activity_log.id,
-            core.LogState.START,
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.START,
         )
 
         if isinstance(self.additional_logs, list) and len(self.additional_logs) > 0:
             for log_item in self.additional_logs:
                 log_item.log_entry(
-                    self.name,
-                    env.now,
-                    self.duration,
-                    None,
-                    activity_log.id,
-                    core.LogState.START,
+                    t=env.now,
+                    activity_id=activity_log.id,
+                    activity_state=core.LogState.START,
                 )
 
         yield env.timeout(self.duration)
 
-        args_data["start_preprocessing"] = start_time
-        args_data["start_activity"] = start_basic
-        self.post_process(**args_data)
-
         activity_log.log_entry(
-            self.name, env.now, self.duration, None, activity_log.id, core.LogState.STOP
+            t=env.now, activity_id=activity_log.id, activity_state=core.LogState.STOP
         )
         if isinstance(self.additional_logs, list) and len(self.additional_logs) > 0:
             for log_item in self.additional_logs:
                 log_item.log_entry(
-                    self.name,
-                    env.now,
-                    self.duration,
-                    None,
-                    activity_log.id,
-                    core.LogState.STOP,
+                    t=env.now,
+                    activity_id=activity_log.id,
+                    activity_state=core.LogState.STOP,
                 )
+
+        args_data["start_preprocessing"] = start_time
+        args_data["start_activity"] = start_basic
+        yield from self.post_process(**args_data)
 
         # work around for the event evaluation
         # this delay of 0 time units ensures that the simpy environment gets a chance to evaluate events

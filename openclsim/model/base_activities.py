@@ -18,14 +18,13 @@ class AbstractPluginClass(ABC):
     def __init__(self):
         pass
 
-    def pre_process(self, env, activity_log, message, activity, *args, **kwargs):
+    def pre_process(self, env, activity_log, activity, *args, **kwargs):
         return {}
 
     def post_process(
         self,
         env,
         activity_log,
-        message,
         activity,
         start_preprocessing,
         start_activity,
@@ -65,15 +64,21 @@ class PluginActivity(core.Identifiable, core.Log):
     def post_process(self, *args, **kwargs):
         # iterating over all registered plugins for this activity calling post_process
         for item in self.plugins:
-            item["plugin"].post_process(*args, **kwargs)
+            yield from item["plugin"].post_process(*args, **kwargs)
 
-    def delay_processing(self, env, delay_name, activity_log, waiting):
+    def delay_processing(self, env, activity_label, activity_log, waiting):
         activity_log.log_entry(
-            delay_name, env.now, -1, None, activity_log.id, core.LogState.WAIT_START
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.WAIT_START,
+            activity_label=activity_label,
         )
         yield env.timeout(waiting)
         activity_log.log_entry(
-            delay_name, env.now, -1, None, activity_log.id, core.LogState.WAIT_STOP
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.WAIT_STOP,
+            activity_label=activity_label,
         )
 
 
@@ -128,9 +133,13 @@ class GenericActivity(PluginActivity):
         self.keep_resources = keep_resources
         self.done_event = self.env.event()
 
-    def register_process(self, main_proc, show=False, additional_logs=[]):
+    def register_process(self, main_proc, show=False, additional_logs=None):
         # replace the done event
         self.done_event = self.env.event()
+
+        # default to []
+        if additional_logs is None:
+            additional_logs = []
 
         start_event = None
         if self.start_event is not None:
@@ -292,43 +301,31 @@ class GenericActivity(PluginActivity):
         if hasattr(start_event, "__call__"):
             start_event = start_event()
         activity_log.log_entry(
-            activity_log.name,
-            env.now,
-            -1,
-            None,
-            activity_log.id,
-            core.LogState.WAIT_START,
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.WAIT_START,
         )
         if isinstance(additional_logs, list) and len(additional_logs) > 0:
             for log in additional_logs:
                 for sub_process in sub_processes:
                     log.log_entry(
-                        activity_log.name,
-                        env.now,
-                        -1,
-                        None,
-                        activity_log.id,
-                        core.LogState.WAIT_START,
+                        t=env.now,
+                        activity_id=activity_log.id,
+                        activity_state=core.LogState.WAIT_START,
                     )
         yield start_event
         activity_log.log_entry(
-            activity_log.name,
-            env.now,
-            -1,
-            None,
-            activity_log.id,
-            core.LogState.WAIT_STOP,
+            t=env.now,
+            activity_id=activity_log.id,
+            activity_state=core.LogState.WAIT_STOP,
         )
         if isinstance(additional_logs, list) and len(additional_logs) > 0:
             for log in additional_logs:
                 for sub_process in sub_processes:
                     log.log_entry(
-                        activity_log.name,
-                        env.now,
-                        -1,
-                        None,
-                        activity_log.id,
-                        core.LogState.WAIT_STOP,
+                        t=env.now,
+                        activity_id=activity_log.id,
+                        activity_state=core.LogState.WAIT_STOP,
                     )
 
         for sub_process in sub_processes:
