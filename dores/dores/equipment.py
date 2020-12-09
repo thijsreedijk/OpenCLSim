@@ -43,7 +43,7 @@ class InstallationVessel(object):
 
     def execute_activities(self):
 
-        while True:
+        while self.port.container.level > 0:
 
             # Request a berth.
             with self.port.resource.request() as req:

@@ -65,7 +65,7 @@ class DiscreteEventSimulation(object):
                 describing the offshore wind farm (ID, size, etc.)
         ---------------------------------------------------------------
         '''
-        size = 50
+        size = 5
 
         self.port = Site(ID='CHERBOURG-OCTEVILLE', env=self.env, capacity=size,
                          level=size, resources=1)
@@ -76,8 +76,8 @@ class DiscreteEventSimulation(object):
         aeolus = dict(ID='AEOLUS', capacity=5, level=0, resources=1)
         aeolus = InstallationVessel(**aeolus, **self.__dict__)
 
-        # svanen = dict(ID='SVANEN', capacity=5, level=0, resources=1)
-        # svanen = InstallationVessel(**svanen, **self.__dict__)
+        svanen = dict(ID='SVANEN', capacity=5, level=0, resources=1)
+        svanen = InstallationVessel(**svanen, **self.__dict__)
 
         return locals()
 
@@ -86,7 +86,7 @@ class DiscreteEventSimulation(object):
         for obj in InstallationVessel.instances:
             self.env.process(obj.execute_activities())
 
-        self.env.run(until=datetime.datetime(2021, 1, 2).timestamp())
+        self.env.run()
 
         InstallationVessel.instances = []
 
