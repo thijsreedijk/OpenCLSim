@@ -3,6 +3,7 @@
 import simpy
 from .log import (EventLog, ActivityState)
 from .sites import Site
+from .activities import Cruise, LoadComponent, InstallComponent
 
 
 # ----------------------------------------------------------------------------!
@@ -26,136 +27,74 @@ class InstallationVessel(object):
                  owf: Site, port: Site, capacity: int, level: int,
                  resources: int, **kwargs):
 
-        # Assign arguments to class attributes
+        # Assign arguments to class attributes.
         self.__dict__ = locals()
         self.__dict__['equipment'] = self.__dict__.pop('self')
 
-        # Initialise deck container using the SimPy container
+        # Initialise deck container using the SimPy container.
         self.container = simpy.Container(env=self.env, capacity=capacity,
                                          init=level)
 
-        # Initialise number of available cranes using the SimPy resource
+        # Initialise number of available cranes using the SimPy resource.
         self.resource = simpy.Resource(env=self.env, capacity=resources)
 
-        # Add new instance to list of instances
+        # Add new instance to list of instances.
         InstallationVessel.instances.append(self)
 
     def execute_activities(self):
 
         while True:
 
-            # Load components onto vessel's deck
-            yield self.env.process(self.load_component(destination=self,
-                                                       origin=self.port))
+            # Request a berth.
+            with self.port.resource.request() as req:
 
-            # Sail from the port to the construction site
-            yield self.env.process(self.navigate(destination=self.owf,
-                                                 origin=self.port))
+                self.log.entry(description=f'Request berth at {self.port.ID}',
+                               activity_state=ActivityState.REQUESTED,
+                               **self.__dict__)
 
-            # Install component(s)
-            while True:
+                yield req
 
-                # Actually install one
-                yield self.env.process(
-                    self.install_component(
-                        destination=self.owf,
-                        origin=self
-                    )
-                )
+                self.log.entry(description=f'Request berth at {self.port.ID}',
+                               activity_state=ActivityState.GRANTED,
+                               **self.__dict__)
 
-                if not self.container.level > 0:
-                    break  # If no more components on deck leave the loop
+                # Check if loading is necessary, if, do so until reached max.
+                while self.container.level < self.container.capacity:
+
+                    # Start loading process.
+                    load_component = LoadComponent(origin=self.port,
+                                                   destination=self,
+                                                   length=3600,
+                                                   **self.__dict__)
+                    yield self.env.process(load_component.execute())
+
+                    if self.port.container.level == 0:
+                        break  # Leave loop in case the stock is empty.
+
+            # Navigate from port to the offshore site.
+            sail_to = Cruise(origin=self.port, destination=self.owf,
+                             length=3600, **self.__dict__)
+            yield self.env.process(sail_to.execute())
+
+            # Install components
+            while self.container.level > 0:
+
+                # Install a single component
+                install_component = InstallComponent(origin=self,
+                                                     destination=self.owf,
+                                                     length=3600,
+                                                     **self.__dict__)
+                yield self.env.process(install_component.execute())
 
                 # Sail to the next site
-                yield self.env.process(self.navigate(destination=self.owf,
-                                                     origin=self.owf))
+                sail_to = Cruise(origin=self.owf, destination=self.owf,
+                                 length=3600, **self.__dict__)
+                yield self.env.process(sail_to.execute())
 
-            # Sail from the offshore site to port
-            yield self.env.process(self.navigate(destination=self.port,
-                                                 origin=self.owf))
-
-            if self.port.container.level == 0:
-                break
-
-    def navigate(self, destination: Site, origin: Site):
-
-        # Get location IDs
-        destination = destination.ID
-        origin = origin.ID
-
-        # Send initialise message to activity log
-        self.log.entry(description=f'Navigate from {origin} to {destination}',
-                       activity_state=ActivityState.INITIATED,
-                       **self.__dict__)
-
-        # Perform activity
-        yield self.env.timeout(3600)
-
-        # Send complete message to activity log
-        self.log.entry(description=f'Navigate from {origin} to {destination}',
-                       activity_state=ActivityState.COMPLETED,
-                       **self.__dict__)
-
-    def load_component(self, destination, origin):
-
-        # Get location IDs
-        dest = destination.ID
-        orig = origin.ID
-
-        # Request a berth
-        with origin.resource.request() as req:
-            self.log.entry(description=f'Request berth at {orig}',
-                           activity_state=ActivityState.REQUESTED,
-                           **self.__dict__)
-            yield req
-            self.log.entry(description=f'Request berth at {orig}',
-                           activity_state=ActivityState.GRANTED,
-                           **self.__dict__)
-
-            # Send initialise message to activity log
-            message = f'Load component from {orig} onto {dest}'
-            self.log.entry(description=message,
-                           activity_state=ActivityState.INITIATED,
-                           **self.__dict__)
-
-            # Perform activity until deck is full or origin is empty!
-            while destination.container.level < destination.container.capacity:
-
-                if origin.container.level == 0:
-                    break
-
-                yield origin.container.get(1)
-                yield destination.container.put(1)
-                yield self.env.timeout(3600)
-
-            # Send initialise message to activity log
-            message = f'Load component from {orig} onto {dest}'
-            self.log.entry(description=message,
-                           activity_state=ActivityState.COMPLETED,
-                           **self.__dict__)
-
-    def install_component(self, destination, origin):
-
-        # Get location IDs
-        dest = destination.ID
-        orig = origin.ID
-
-        # Send initialise message to activity log
-        message = f'Install component from {orig} to {dest}'
-        self.log.entry(description=message,
-                       activity_state=ActivityState.INITIATED,
-                       **self.__dict__)
-
-        # Perform activity
-        yield origin.container.get(1)
-        yield destination.container.put(1)
-        yield self.env.timeout(3600)
-
-        # Send initialise message to activity log
-        message = f'Install component from {orig} to {dest}'
-        self.log.entry(description=message,
-                       activity_state=ActivityState.COMPLETED,
-                       **self.__dict__)
+            # Navigate from the offshore site to port.
+            sail_to = Cruise(origin=self.owf, destination=self.port,
+                             length=3600, **self.__dict__)
+            yield self.env.process(sail_to.execute())
 
 
 # ----------------------------------------------------------------------------!

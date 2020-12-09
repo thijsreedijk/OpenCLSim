@@ -86,7 +86,7 @@ class DiscreteEventSimulation(object):
         for obj in InstallationVessel.instances:
             self.env.process(obj.execute_activities())
 
-        self.env.run()
+        self.env.run(until=datetime.datetime(2021, 1, 2).timestamp())
 
         InstallationVessel.instances = []
 
