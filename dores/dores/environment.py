@@ -94,7 +94,10 @@ class DiscreteEventSimulation(object):
         return pd.DataFrame(self.log.log)
 
     def get_project_length(self):
-        pass
+        log_file = self.log.log
+        period = log_file['Timestamp'][-1] - log_file['Timestamp'][0]
+        period = period.total_seconds() / (24 * 3600)
+        return period
 
 
 # ----------------------------------------------------------------------------!

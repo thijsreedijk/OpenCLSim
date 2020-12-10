@@ -4,6 +4,7 @@ import simpy
 from .log import (EventLog, ActivityState)
 from .sites import Site
 from .activities import Cruise, LoadComponent, InstallComponent
+from .appendix import lognorm
 
 
 # ----------------------------------------------------------------------------!
@@ -43,6 +44,12 @@ class InstallationVessel(object):
 
     def execute_activities(self):
 
+        # Manually adjust these!
+        sail_length = lognorm(mean=3600 * 1.9, std=1800)
+        sail_between_length = lognorm(mean=3600 * 0.5, std=300)
+        load_length = lognorm(mean=3600 * 3.7, std=600)
+        install_length = lognorm(mean=3600 * (33.2), std=3600)
+
         while self.port.container.level > 0:
 
             # Request a berth.
@@ -64,7 +71,7 @@ class InstallationVessel(object):
                     # Start loading process.
                     load_component = LoadComponent(origin=self.port,
                                                    destination=self,
-                                                   length=3600,
+                                                   length=load_length.rvs(),
                                                    **self.__dict__)
                     yield self.env.process(load_component.execute())
 
@@ -73,27 +80,30 @@ class InstallationVessel(object):
 
             # Navigate from port to the offshore site.
             sail_to = Cruise(origin=self.port, destination=self.owf,
-                             length=3600, **self.__dict__)
+                             length=sail_length.rvs(), **self.__dict__)
             yield self.env.process(sail_to.execute())
 
             # Install components
             while self.container.level > 0:
 
                 # Install a single component
-                install_component = InstallComponent(origin=self,
-                                                     destination=self.owf,
-                                                     length=3600,
-                                                     **self.__dict__)
+                install_component = InstallComponent(
+                    origin=self,
+                    destination=self.owf,
+                    length=install_length.rvs(),
+                    **self.__dict__
+                )
                 yield self.env.process(install_component.execute())
 
                 # Sail to the next site
                 sail_to = Cruise(origin=self.owf, destination=self.owf,
-                                 length=3600, **self.__dict__)
+                                 length=sail_between_length.rvs(),
+                                 **self.__dict__)
                 yield self.env.process(sail_to.execute())
 
             # Navigate from the offshore site to port.
             sail_to = Cruise(origin=self.owf, destination=self.port,
-                             length=3600, **self.__dict__)
+                             length=sail_length.rvs(), **self.__dict__)
             yield self.env.process(sail_to.execute())
 
 
