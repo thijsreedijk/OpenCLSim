@@ -109,3 +109,9 @@ class InstallComponent(object):
 
         # Send complete message to activity log
         self.log.entry(activity_state=ActivityState.COMPLETED, **self.__dict__)
+
+
+class RequestWeatherWindow(object):
+    def __init__(self, environment, **kwargs):
+        self.__dict__ = locals()
+        print(self.__dict__)

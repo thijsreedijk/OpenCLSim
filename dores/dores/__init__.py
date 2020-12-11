@@ -6,7 +6,7 @@ from .environment import DiscreteEventSimulation
 from .sites import Site
 from .equipment import InstallationVessel
 from .log import EventLog, ActivityState
-from .appendix import lognorm
+from .appendix import lognorm, import_data
 from .offshore import OffshoreEnvironment
 
 
@@ -18,5 +18,6 @@ __all__ = [
     'EventLog',
     'ActivityState',
     'lognorm',
+    'import_data'
     'OffshoreEnvironment'
 ]

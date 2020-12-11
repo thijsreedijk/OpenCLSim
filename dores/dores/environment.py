@@ -7,6 +7,7 @@ from .log import EventLog
 from .sites import Site
 from .equipment import InstallationVessel
 from .offshore import OffshoreEnvironment
+from .activities import RequestWeatherWindow
 
 
 # ----------------------------------------------------------------------------!
