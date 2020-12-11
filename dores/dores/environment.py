@@ -6,6 +6,7 @@ import pandas as pd
 from .log import EventLog
 from .sites import Site
 from .equipment import InstallationVessel
+from .offshore import OffshoreEnvironment
 
 
 # ----------------------------------------------------------------------------!
@@ -47,7 +48,10 @@ class DiscreteEventSimulation(object):
         self.env = simpy.Environment(initial_time=self.POSIX)
 
         # Event log
-        self.log = EventLog(env=self.env)
+        self.log = EventLog(**self.__dict__)
+
+        # Initialise the offshore environment
+        self.oe = OffshoreEnvironment(**self.__dict__)
 
     def create_entities(self):
         '''
@@ -76,8 +80,8 @@ class DiscreteEventSimulation(object):
         aeolus = dict(ID='AEOLUS', capacity=5, level=0, resources=1)
         aeolus = InstallationVessel(**aeolus, **self.__dict__)
 
-        svanen = dict(ID='SVANEN', capacity=5, level=0, resources=1)
-        svanen = InstallationVessel(**svanen, **self.__dict__)
+        # svanen = dict(ID='SVANEN', capacity=5, level=0, resources=1)
+        # svanen = InstallationVessel(**svanen, **self.__dict__)
 
         return locals()
 
