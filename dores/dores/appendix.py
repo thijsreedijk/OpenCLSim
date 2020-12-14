@@ -43,8 +43,7 @@ def import_data(fname, **kwargs):
                                       errors='coerce')
 
     # Turn no data into Numpy's NaN value
-    mask = database['VALUE'] > 10000
-    database['VALUE'][mask] = np.nan
+    database['VALUE'].where((database['VALUE'] < 1000), inplace=True)
 
     # Merge date and time strings into datetime object
     date = database['DATE']

@@ -8,6 +8,7 @@ from .sites import Site
 from .equipment import InstallationVessel
 from .offshore import OffshoreEnvironment
 from .activities import RequestWeatherWindow
+from .appendix import import_data
 
 
 # ----------------------------------------------------------------------------!
@@ -43,7 +44,7 @@ class DiscreteEventSimulation(object):
         del self.__dict__['self']
 
         # Initialise simulation environment using the SimPy framework
-        if not start_date:  # If user did not specify a start date
+        if start_date is None:  # If user did not specify a start date
             self.start_date = datetime.datetime(2021, 1, 1)  # Default date
         self.POSIX = self.start_date.timestamp()  # Turn datetime to POSIX
         self.env = simpy.Environment(initial_time=self.POSIX)
@@ -52,7 +53,14 @@ class DiscreteEventSimulation(object):
         self.log = EventLog(**self.__dict__)
 
         # Initialise the offshore environment
-        self.oe = OffshoreEnvironment(**self.__dict__)
+        filename = './data/LichteilandGoerree/hp.csv'
+        dataset = import_data(filename)
+        wave_height = dataset['VALUE'] / 100
+        peak_period = 5 * (wave_height) ** 0.5
+        self.oe = OffshoreEnvironment(date_list=dataset['DATETIME'],
+                                      hs=wave_height,
+                                      tp=peak_period,
+                                      **self.__dict__)
 
     def create_entities(self):
         '''

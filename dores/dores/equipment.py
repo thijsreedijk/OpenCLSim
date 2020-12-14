@@ -1,10 +1,13 @@
 ''' CONTAINS CLASSES FOR GENERATING ENTITIES. '''
 # ----------------------------------------------------------------------------!
 import simpy
+import numpy as np
 from .log import (EventLog, ActivityState)
 from .sites import Site
-from .activities import Cruise, LoadComponent, InstallComponent
+from .activities import (Cruise, LoadComponent, InstallComponent,
+                         RequestWeatherWindow)
 from .appendix import lognorm
+from .offshore import OffshoreEnvironment
 
 
 # ----------------------------------------------------------------------------!
@@ -25,8 +28,8 @@ class InstallationVessel(object):
     instances = []
 
     def __init__(self, ID: str, env: simpy.Environment, log: EventLog,
-                 owf: Site, port: Site, capacity: int, level: int,
-                 resources: int, **kwargs):
+                 oe: OffshoreEnvironment, owf: Site, port: Site, capacity: int,
+                 level: int, resources: int, **kwargs):
 
         # Assign arguments to class attributes.
         self.__dict__ = locals()
@@ -87,10 +90,16 @@ class InstallationVessel(object):
             while self.container.level > 0:
 
                 # Install a single component
+                length = install_length.rvs()
+                w = RequestWeatherWindow(**self.__dict__)
+                def limit(tp, hs): return hs > 10 * np.exp(-tp / 2.5)
+                yield self.env.process(w.execute(limit_expr=limit,
+                                                 duration=length))
+
                 install_component = InstallComponent(
                     origin=self,
                     destination=self.owf,
-                    length=install_length.rvs(),
+                    length=length,
                     **self.__dict__
                 )
                 yield self.env.process(install_component.execute())
