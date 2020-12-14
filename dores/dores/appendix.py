@@ -65,3 +65,16 @@ def import_data(fname, **kwargs):
             raise Exception('Unable to match timestamp format')
 
     return database[['DATETIME', 'VALUE']]
+
+
+# ----------------------------------------------------------------------------!
+def cumulative_dist(data: list = None):
+
+    # Convert data to pandas dataframe and sort
+    data_frame = pd.DataFrame({'X': data}).sort_values(by='X')
+
+    # Create cumulative and exceedence distribution functions
+    data_frame['CDF'] = np.arange(len(data_frame)) / (len(data_frame) - 1)
+    data_frame['EDF'] = 1 - data_frame['CDF']
+
+    return data_frame

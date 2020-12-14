@@ -6,7 +6,7 @@ from .environment import DiscreteEventSimulation
 from .sites import Site
 from .equipment import InstallationVessel
 from .log import EventLog, ActivityState
-from .appendix import lognorm, import_data
+from .appendix import lognorm, import_data, cumulative_dist
 from .offshore import OffshoreEnvironment
 
 
