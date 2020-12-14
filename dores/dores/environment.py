@@ -52,14 +52,12 @@ class DiscreteEventSimulation(object):
         # Event log
         self.log = EventLog(**self.__dict__)
 
+    def offshore_environment(self, dataframe):
+
         # Initialise the offshore environment
-        filename = './data/LichteilandGoerree/hp.csv'
-        dataset = import_data(filename)
-        wave_height = dataset['VALUE'] / 100
-        peak_period = 5 * (wave_height) ** 0.5
-        self.oe = OffshoreEnvironment(date_list=dataset['DATETIME'],
-                                      hs=wave_height,
-                                      tp=peak_period,
+        self.oe = OffshoreEnvironment(date_list=dataframe['DATETIME'],
+                                      hs=dataframe['WAVE HEIGHT'],
+                                      tp=dataframe['WAVE PERIOD'],
                                       **self.__dict__)
 
     def create_entities(self):
