@@ -92,7 +92,9 @@ class InstallationVessel(object):
                 # Install a single component
                 length = install_length.rvs()
                 w = RequestWeatherWindow(**self.__dict__)
+
                 def limit(tp, hs): return hs > 10 * np.exp(-tp / 2.5)
+                
                 yield self.env.process(w.execute(limit_expr=limit,
                                                  duration=length))
 
