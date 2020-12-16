@@ -4,8 +4,7 @@ import uuid
 
 
 class Identifiable:
-    """
-    OpenCLSim Identifiable with tags and a description.
+    """ OpenCLSim Identifiable with tags and a description.
 
     Parameters
     ----------
@@ -22,6 +21,6 @@ class Identifiable:
     """
 
     def __init__(self, name: str, ID: str = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        # super().__init__(*args, **kwargs)  # <= Unnecessary
         self.name = name
         self.id = ID if ID else str(uuid.uuid4())
