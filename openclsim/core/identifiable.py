@@ -21,6 +21,6 @@ class Identifiable:
     """
 
     def __init__(self, name: str, ID: str = None, *args, **kwargs):
-        # super().__init__(*args, **kwargs)  # <= Unnecessary
+        super().__init__(*args, **kwargs)
         self.name = name
         self.id = ID if ID else str(uuid.uuid4())
