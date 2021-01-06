@@ -14,5 +14,5 @@ class SimpyObject:
     '''
 
     def __init__(self, env, *args, **kwargs):
-        # super().__init__(*args, **kwargs)  # <= Unnecessary
+        super().__init__(*args, **kwargs)
         self.env = env
