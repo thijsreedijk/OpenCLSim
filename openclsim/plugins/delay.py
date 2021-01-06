@@ -42,11 +42,13 @@ class DelayPlugin(model.AbstractPluginClass):
         try:
             if isinstance(delay_percentage, (float, int)):
                 self.delay_factor = delay_percentage / 100
+                self.delay_is_dist = False
             elif hasattr(delay_percentage, 'rvs'):
                 self.delay_factor = delay_percentage
                 self.delay_is_dist = True
             elif delay_percentage is None:
                 self.delay_factor = None
+                self.delay_is_dist = False
             else:
                 raise TypeError('delay_percentage accepts only a "float", ' +
                                 '"int" or "scipy.stats.rv_continuous"')

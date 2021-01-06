@@ -6,9 +6,10 @@ import openclsim.core as core
 import openclsim.model as model
 import openclsim.plot as plot
 import openclsim.plugins as plugins
+import openclsim.appendix as appendix
 
 __author__ = """Mark van Koningsveld"""
 __email__ = "M.vanKoningsveld@tudelft.nl"
 __version__ = "1.2.3"
-__all__ = ["model", "plugins", "core", "plot"]
+__all__ = ["model", "plugins", "core", "plot", "appendix"]
 # __version__ = pkg_resources.get_distribution(__name__).version
