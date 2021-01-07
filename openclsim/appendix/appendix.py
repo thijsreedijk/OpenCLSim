@@ -1,10 +1,12 @@
-# ----------------------------------------------------------------------------!
+"""Contains a number of extra functions."""
+# -------------------------------------------------------------------------------------!
 import pandas as pd
 
 
-# ----------------------------------------------------------------------------!
+# -------------------------------------------------------------------------------------!
 def remove_item(d: dict, k: str or list):
-    """Python function removing a key, value pair from a dictionary
+    """Python function removing a key, value pair from a dictionary.
+
     Parameters
     ----------
         d: dict
@@ -16,7 +18,6 @@ def remove_item(d: dict, k: str or list):
         new_dict: dict
             A python dictionary without the previously removed item.
     """
-
     if type(k) is str:
         return dict([(key, value) for key, value in d.items() if key != k])
 
@@ -24,9 +25,10 @@ def remove_item(d: dict, k: str or list):
         return dict([(key, value) for key, value in d.items() if key not in k])
 
 
-# ----------------------------------------------------------------------------!
+# -------------------------------------------------------------------------------------!
 def get_event_log(activity_list: list):
-    """ Function returning the event log of the installation process.
+    """Return the event log of the installation process.
+
     The get_event_log function takes a list containing the
     basic activities involved during the installation process.
     Using some basic operation it concatenates the logs of the given
@@ -41,7 +43,6 @@ def get_event_log(activity_list: list):
         event_log: pandas.DataFrame
             A pandas dataframe object with the corresponding event log.
     """
-
     # Combine activity logs
     dataframe = pd.concat([pd.DataFrame(x.log) for x in activity_list])
     dataframe["NumericState"] = dataframe["ActivityState"] == "START"
@@ -53,8 +54,6 @@ def get_event_log(activity_list: list):
     dataframe["Description"] = dataframe["ActivityID"]
     dataframe["Description"] = dataframe["Description"].replace(id_map)
 
-    event_log = dataframe[
-        ["Timestamp", "ActivityState", "Description", "ActivityID"]
-    ]
+    event_log = dataframe[["Timestamp", "ActivityState", "Description", "ActivityID"]]
 
     return event_log

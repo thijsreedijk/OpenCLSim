@@ -1,4 +1,4 @@
-""""WEATHER PLUGIN FOR THE VO SIMULATIONS."""
+"""Weather plugin for the VO simulations."""
 # ----------------------------------------------------------------------------!
 import openclsim.model as model
 
@@ -8,11 +8,10 @@ class HasDelayPlugin:
     """Mixin forActivity to initialize WeatherPluginActivity."""
 
     def __init__(self, delay_percentage=None, *args, **kwargs):
+        """Class constructor."""
         super().__init__(*args, **kwargs)
 
-        if delay_percentage is not None and isinstance(
-            self, model.PluginActivity
-        ):
+        if delay_percentage is not None and isinstance(self, model.PluginActivity):
 
             delay_plugin = DelayPlugin(delay_percentage=delay_percentage)
             self.register_plugin(plugin=delay_plugin, priority=3)
@@ -38,6 +37,7 @@ class DelayPlugin(model.AbstractPluginClass):
     """
 
     def __init__(self, delay_percentage=None, *args, **kwargs):
+        """Class constructor."""
         super().__init__(*args, **kwargs)
 
         try:
@@ -62,7 +62,7 @@ class DelayPlugin(model.AbstractPluginClass):
     def post_process(
         self, env, activity_log, activity, start_activity, *args, **kwargs
     ):
-
+        """Post processes the activity."""
         # Check if delay has been defined. If not no delay is added.
         if self.delay_factor is None:
             return {}
