@@ -10,8 +10,9 @@ class HasDelayPlugin:
     def __init__(self, delay_percentage=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if (delay_percentage is not None and
-           isinstance(self, model.PluginActivity)):
+        if delay_percentage is not None and isinstance(
+            self, model.PluginActivity
+        ):
 
             delay_plugin = DelayPlugin(delay_percentage=delay_percentage)
             self.register_plugin(plugin=delay_plugin, priority=3)
@@ -43,21 +44,24 @@ class DelayPlugin(model.AbstractPluginClass):
             if isinstance(delay_percentage, (float, int)):
                 self.delay_factor = delay_percentage / 100
                 self.delay_is_dist = False
-            elif hasattr(delay_percentage, 'rvs'):
+            elif hasattr(delay_percentage, "rvs"):
                 self.delay_factor = delay_percentage
                 self.delay_is_dist = True
             elif delay_percentage is None:
                 self.delay_factor = None
                 self.delay_is_dist = False
             else:
-                raise TypeError('delay_percentage accepts only a "float", ' +
-                                '"int" or "scipy.stats.rv_continuous"')
+                raise TypeError(
+                    'delay_percentage accepts only a "float", '
+                    + '"int" or "scipy.stats.rv_continuous"'
+                )
 
         except TypeError:
             raise
 
-    def post_process(self, env, activity_log, activity, start_activity, *args,
-                     **kwargs):
+    def post_process(
+        self, env, activity_log, activity, start_activity, *args, **kwargs
+    ):
 
         # Check if delay has been defined. If not no delay is added.
         if self.delay_factor is None:
@@ -74,5 +78,6 @@ class DelayPlugin(model.AbstractPluginClass):
             activity_delay = (env.now - start_activity) * self.delay_factor
             activity_label = {"type": "plugin", "ref": "delay"}
 
-        return activity.delay_processing(env, activity_label, activity_log,
-                                         activity_delay)
+        return activity.delay_processing(
+            env, activity_label, activity_log, activity_delay
+        )
