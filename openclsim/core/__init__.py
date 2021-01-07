@@ -5,11 +5,7 @@ from .events_container import EventsContainer
 from .identifiable import Identifiable
 from .locatable import Locatable
 from .log import Log, LogState
-from .movable import (
-    ContainerDependentMovable,
-    Movable,
-    MultiContainerDependentMovable,
-)
+from .movable import ContainerDependentMovable, Movable, MultiContainerDependentMovable
 from .processor import LoadingFunction, Processor, UnloadingFunction
 from .resource import HasResource
 from .simpy_object import SimpyObject

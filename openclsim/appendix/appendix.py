@@ -5,7 +5,9 @@ import pandas as pd
 
 # -------------------------------------------------------------------------------------!
 def remove_item(d: dict, k: str or list):
-    """Python function removing a key, value pair from a dictionary.
+    """Remove key, value pair from dictionary.
+
+    Python function removing a key, value pair from a dictionary.
 
     Parameters
     ----------
@@ -13,10 +15,12 @@ def remove_item(d: dict, k: str or list):
             Dictionary from which the pair should be removed.
         k: str or list
             Key indicating which pair should be removed.
+
     Returns
     -------
         new_dict: dict
             A python dictionary without the previously removed item.
+
     """
     if type(k) is str:
         return dict([(key, value) for key, value in d.items() if key != k])
@@ -33,15 +37,18 @@ def get_event_log(activity_list: list):
     basic activities involved during the installation process.
     Using some basic operation it concatenates the logs of the given
     activities.
+
     Parameters
     ----------
         activity_list: list
             A list containing the basic activities defined in the
             simulation environment.
+
     Returns
     -------
         event_log: pandas.DataFrame
             A pandas dataframe object with the corresponding event log.
+
     """
     # Combine activity logs
     dataframe = pd.concat([pd.DataFrame(x.log) for x in activity_list])
