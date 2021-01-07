@@ -71,12 +71,12 @@ class DelayPlugin(model.AbstractPluginClass):
         elif self.delay_is_dist:
             dt = env.now - start_activity
             activity_delay = dt * self.delay_factor.rvs() / 100
-            activity_label = {"type": "plugin", "ref": "delay"}
 
         # If delay is discrete valued.
         else:
             activity_delay = (env.now - start_activity) * self.delay_factor
-            activity_label = {"type": "plugin", "ref": "delay"}
+
+        activity_label = {"type": "plugin", "ref": "delay"}
 
         return activity.delay_processing(
             env, activity_label, activity_log, activity_delay
