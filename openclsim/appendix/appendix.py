@@ -7,7 +7,7 @@ import pandas as pd
 def remove_item(d: dict, k: str or list):
     """Remove key, value pair from dictionary.
 
-    Python function removing a key, value pair from a dictionary.
+    Python function for removing a (key, value) pair from a dictionary.
 
     Parameters
     ----------
