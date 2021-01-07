@@ -19,7 +19,8 @@ class HasDelayPlugin:
 
 # ----------------------------------------------------------------------------!
 class DelayPlugin(model.AbstractPluginClass):
-    """Mixin for all activities to add delay and downtime.
+    """
+    Mixin for all activities to add delay and downtime.
 
     The DelayPlugin allows the user to extend the activity length by a
     certain `delay percentage`. The user may define the delay

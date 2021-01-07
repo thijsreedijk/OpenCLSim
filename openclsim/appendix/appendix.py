@@ -5,9 +5,12 @@ import pandas as pd
 
 # -------------------------------------------------------------------------------------!
 def remove_item(d: dict, k: str or list):
-    """Remove key, value pair from dictionary.
+    """
+    Remove key, value pair from dictionary.
 
     Python function for removing a (key, value) pair from a dictionary.
+    One or multiple keys may be provided using either a single string
+    or a list of strings.
 
     Parameters
     ----------
@@ -31,7 +34,8 @@ def remove_item(d: dict, k: str or list):
 
 # -------------------------------------------------------------------------------------!
 def get_event_log(activity_list: list):
-    """Return the event log of the installation process.
+    """
+    Return the event log of the installation process.
 
     The get_event_log function takes a list containing the
     basic activities involved during the installation process.
