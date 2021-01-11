@@ -1,6 +1,7 @@
 """Directory for the weather plugin."""
 
 import numpy as np
+from typing import Callable
 
 import openclsim.model as model
 
@@ -34,8 +35,9 @@ class WeatherCriterion:
         *args,
         **kwargs,
     ):
+        """Class constructor."""
         super().__init__(*args, **kwargs)
-        """Initialization"""
+
         self.name = name
         self.condition = condition
 
@@ -47,7 +49,8 @@ class WeatherCriterion:
                 assert minimum is None
         except Exception as e:
             raise AssertionError(
-                f"One and only one of the parameters minimum or maximum can be defined (error message: {e})."
+                f"One and only one of the parameters minimum or maximum can be defined"
+                + "(error message: {e})."
             )
 
         self.minimum = minimum
@@ -61,6 +64,7 @@ class HasWeatherPluginActivity:
     """Mixin forActivity to initialize WeatherPluginActivity."""
 
     def __init__(self, metocean_criteria, metocean_df, *args, **kwargs):
+        """Class constructor."""
         super().__init__(*args, **kwargs)
 
         if (
@@ -81,11 +85,13 @@ class WeatherPluginActivity(model.AbstractPluginClass):
     """Mixin for MoveActivity to initialize TestPluginMoveActivity."""
 
     def __init__(self, weather_criteria=None, metocean_df=None):
+        """Class constructor."""
         assert isinstance(weather_criteria, WeatherCriterion)
         self.weather_criteria = weather_criteria
         self.metocean_df = metocean_df
 
     def pre_process(self, env, activity_log, activity, *args, **kwargs):
+        """Pre-processor."""
         if self.weather_criteria is not None:
             t = float(env.now)
             determined_range = self.check_constraint(start_time=t)
@@ -105,6 +111,7 @@ class WeatherPluginActivity(model.AbstractPluginClass):
             return {}
 
     def check_constraint(self, start_time):
+        """Check for constraints."""
         res = self.process_data(self.weather_criteria)
         windows = np.array(res["windows"])
         ts_start = res["dataset_start"]
@@ -120,7 +127,7 @@ class WeatherPluginActivity(model.AbstractPluginClass):
         return list(filter_windows[0])
 
     def process_data(self, criterion) -> None:
-
+        """Derive weather windows."""
         col = criterion.condition
         orig_data = self.metocean_df.copy()
 
@@ -196,3 +203,54 @@ class WeatherPluginActivity(model.AbstractPluginClass):
             "windows": windows,
         }
         return result
+
+
+# -------------------------------------------------------------------------------------!
+class HasOperationalLimits(object):
+    """
+    Provide operational constraints to an activity or equipment.
+
+    The HasOperationLimits class allows the user to set operational
+    limits to an activity or equipment.
+
+    Parameters
+    ----------
+        limit_expr: Callable
+            A (Python) function expressing the operational limits in
+            terms of critical parameters, for example, the significant
+            wave height and peak wave period `f(hs, tp)`. The function
+            should return a bool, where `True` is considered as the
+            event in which the limit has been exceeded.
+    """
+
+    def __init__(self, limit_expr: Callable, *args, **kwargs):
+        """Class constructor."""
+        super().__init__()
+
+        # Instance attributes
+        self.limit_expr = limit_expr
+
+
+# -------------------------------------------------------------------------------------!
+class RequestWindowPluginActivity(object):
+    """
+    Models the activity of a waiting on weather event.
+
+    The RequestWindowPluginActivity class is used to model the activity
+    of a waiting on weather event.
+
+    """
+
+    pass
+
+
+# -------------------------------------------------------------------------------------!
+class OffshoreEnvironment(object):
+    """
+    Holds information about the offshore environment.
+
+    An instance of the OffshoreEnvironment class holds information of
+    site specific data.
+    """
+
+    pass
