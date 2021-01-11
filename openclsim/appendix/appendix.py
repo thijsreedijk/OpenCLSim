@@ -1,6 +1,8 @@
 """Contains a number of extra functions."""
 # -------------------------------------------------------------------------------------!
+from numpy.lib.arraysetops import isin
 import pandas as pd
+from collections.abc import Iterable
 
 
 # -------------------------------------------------------------------------------------!
@@ -68,3 +70,30 @@ def get_event_log(activity_list: list):
     event_log = dataframe[["Timestamp", "ActivityState", "Description", "ActivityID"]]
 
     return event_log
+
+
+# -------------------------------------------------------------------------------------!
+def flatten(lst: list):
+    """
+    Flatten a multi-level nested list.
+
+    The flatten function takes any arbitrary nested list and flattens
+    it. The function returns a Python generator object, therefore, use
+    the function in combination with Pythons' list() function to unpack
+    the values.
+
+    Paramters
+    ---------
+        lst: list
+            A multi-level nested list.
+
+    Example
+    -------
+        >>> list(flatten(['A', 'B', ['C', ['D'], 'E'], 'F']))
+        >>> ['A', 'B', 'C', 'D', 'E', 'F']
+    """
+    for item in lst:
+        if isinstance(item, Iterable) and not isinstance(item, (str, bytes)):
+            yield from flatten(item)
+        else:
+            yield item
