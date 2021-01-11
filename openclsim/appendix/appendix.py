@@ -1,6 +1,5 @@
 """Contains a number of extra functions."""
 # -------------------------------------------------------------------------------------!
-from numpy.lib.arraysetops import isin
 import pandas as pd
 from collections.abc import Iterable
 
