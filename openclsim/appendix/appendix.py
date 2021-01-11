@@ -1,6 +1,7 @@
 """Contains a number of extra functions."""
 # -------------------------------------------------------------------------------------!
 from collections.abc import Iterable
+
 import pandas as pd
 
 
