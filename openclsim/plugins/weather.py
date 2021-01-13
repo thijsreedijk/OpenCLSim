@@ -2,6 +2,9 @@
 
 import numpy as np
 from typing import Callable
+import pandas as pd
+import os
+import simpy
 
 import openclsim.model as model
 
@@ -221,27 +224,86 @@ class HasOperationalLimits(object):
             wave height and peak wave period `f(hs, tp)`. The function
             should return a bool, where `True` is considered as the
             event in which the limit has been exceeded.
+
     """
 
     def __init__(self, limit_expr: Callable, *args, **kwargs):
         """Class constructor."""
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
         # Instance attributes
         self.limit_expr = limit_expr
 
 
 # -------------------------------------------------------------------------------------!
-class RequestWindowPluginActivity(object):
+class HasRequestWindowPluginActivity(HasOperationalLimits):
+    """
+    Initialise the RequestWindowPluginActivity.
+
+    An `HasRequestWindowPluginActivity` instance initialises the waiting
+    on weather activity which is modelled using the
+    `RequestWindowPluginActivity`.
+
+    Examples
+    --------
+        >>>
+
+    """
+
+    def __init__(
+        self, offshore_environment: "OffshoreEnvironment" = None, *args, **kwargs
+    ):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        if isinstance(self, model.PluginActivity) and isinstance(
+            offshore_environment, OffshoreEnvironment
+        ):
+            plugin = RequestWindowPluginActivity(
+                offshore_environment=offshore_environment
+            )
+            self.register_plugin(plugin=plugin, priority=2)
+
+
+# -------------------------------------------------------------------------------------!
+class RequestWindowPluginActivity(model.AbstractPluginClass):
     """
     Models the activity of a waiting on weather event.
 
     The RequestWindowPluginActivity class is used to model the activity
     of a waiting on weather event.
 
+    Parameters
+    ----------
+        offshore_environment: OffshorEnvironment
+            An instance of the OffshoreEnvironment class.
+
     """
 
-    pass
+    def __init__(self, offshore_environment: "OffshoreEnvironment", *args, **kwargs):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        # Instance attributes
+        self.oe = offshore_environment
+
+    def pre_process(self, env, activity_log, activity, *args, **kwargs):
+        """
+        Apply the waiting on weather event.
+
+        The `pre_process` function applies the waiting on weather event
+        ahead of the `main` activity.
+
+        """
+        activity_delay = self.oe.find_window(
+            env=env, limit_expr=activity.limit_expr, duration=activity.duration
+        )
+
+        activity_label = {"type": "plugin", "ref": "waiting on weather"}
+
+        return activity.delay_processing(
+            env, activity_label, activity_log, activity_delay
+        )
 
 
 # -------------------------------------------------------------------------------------!
@@ -251,6 +313,169 @@ class OffshoreEnvironment(object):
 
     An instance of the OffshoreEnvironment class holds information of
     site specific data.
+
     """
 
-    pass
+    def __init__(self, *args, **kwargs):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+    def store_information(
+        self, var: str = None, value=None, filename: str = None, **kwargs
+    ):
+        """
+        Store metocean information in the dataset.
+
+        The store_information function provides the user a method to
+        pass information to the dataset about site specific metocean
+        conditions. The function takes either a single value using the
+        `value` argument, or a series of values from a `.csv` file. The
+        latter requires two columns of data: (1) timestamps from when
+        the data was recorded and (2) the corresponding values. Besides,
+        the first row of the file is processed as column names.
+
+        If a filename is provided, the pandas package is used to read
+        the contents. For that reason, it is possible to manipulate the
+        reading process using keyword-arguments. Please refer to the
+        `pandas.read_csv` documentation.
+
+        Parameters
+        ----------
+            var: str
+                Variable name as a single word or abbriviation.
+            value: str
+                Value of the corresponding variable.
+            filename: str
+                Path to the `.csv` file.
+
+        Examples
+        --------
+            >>>
+
+        """
+        # Test if a variable name is (properly) provided.
+        if (var is not None) and (isinstance(var, str) is False):
+            raise ValueError("The `var` argument accepts only a `string` type.")
+        elif var is None:
+            raise TypeError(
+                "`store_information` requires at least the positional arguments: `var`"
+                + " and `value` or `filename`."
+            )
+        else:
+            pass
+
+        # Test if a value or filename is (properly) provided.
+        if (value is None) and (filename is None):
+            raise TypeError(
+                "`store_information` requires at least one of the positional arguments:"
+                + " `value` or `filename` to be set."
+            )
+        elif (value is not None) and (filename is not None):
+            raise TypeError(
+                "`store_information accepts either a `value` or `filename` to be set."
+            )
+        elif (filename is not None) and (isinstance(filename, str) is False):
+            raise ValueError("The `filename` argument accepts only a `string` type.")
+        elif (filename is not None) and (os.path.isfile(filename) is False):
+            raise FileNotFoundError(f"Unable to find the file: `{filename}`.")
+        elif (filename is not None) and (len(filename) == 0):
+            raise ValueError("The `filename` argument received an empty `string`.")
+        else:
+            pass
+
+        # Try to store the information as an instance attribute.
+        if (value is not None) and (filename is None):
+            try:
+                self.__dict__[var] = value
+            except Exception:
+                raise Exception("For some reason I'm unable to store the information.")
+
+        # Try to store the data in a pandas dataframe.
+        elif (value is None) and (filename is not None) and (os.path.isfile(filename)):
+
+            # Read and import file.
+            try:
+                dataframe = pd.read_csv(filename, **kwargs)
+            except Exception:
+                raise Exception("Unable to read `.csv` properly.")
+
+            # Parse dates to datetime.datetime objects.
+            try:
+                dataframe.iloc[:, 0] = pd.to_datetime(dataframe.iloc[:, 0])
+            except Exception:
+                raise Exception(
+                    "Unable to parse the timestamps to datetime.datetime objects. "
+                    + "Make sure the format is either:\n `dd-mm-yy hh:mm:ss` or\n "
+                    + "`dd/mm/yy hh:mm:ss`"
+                ) from None
+
+            # Parse possible string values to numeric.
+            try:
+                dataframe.iloc[:, 1] = pd.to_numeric(
+                    dataframe.iloc[:, 1], errors="coerce"
+                )
+            except Exception:
+                raise Exception(
+                    "For some reason I'm unable to transform values to numeric values."
+                )
+
+            # Set dates as index
+            try:
+                columns = dataframe.columns
+                dataframe = dataframe.set_index(columns[0])
+            except Exception:
+                raise Exception("For some reason I'm Unable to set the date as index.")
+
+            # Store dataframe as instance attribute
+            self.__dict__[var] = dataframe
+
+        else:
+            pass
+
+    def find_window(
+        self, env: simpy.Environment, limit_expr: Callable, duration: float, **kwargs
+    ):
+        """
+        Find the next workable weather window.
+
+        The `find_window` function searches for the first workable
+        weather window present in a given dataset. It requires the
+        operational limits, the simulation environment and data about
+        the offshore environment.
+
+        Parameters
+        ----------
+            env: simpy.Environment
+                A SimPy simulation environment.
+
+        """
+        # Find which parameters are of interest.
+        vars = list(limit_expr.__code__.co_varnames)
+
+        # Test if they are allocated within the attributes.
+        try:
+            series = [self.__dict__[var] for var in vars]
+
+        except KeyError:
+            raise KeyError(
+                "`limit_expr` uses arguments that are not present in the database."
+            ) from None
+
+        # Join the data into a single dataframe
+        try:
+            dataframe = pd.concat(series, axis="columns")
+            dataframe.columns = vars
+        except Exception:
+            raise Exception("Unable to merge the constraining variables.")
+
+        # Test if the limit is exceeded, True indicates it is.
+        dataframe["limit_exceeded"] = limit_expr(*[dataframe[var] for var in vars])
+
+        # Create consecutive time `blocks`.
+        dataframe["block"] = (
+            dataframe["limit_exceeded"].shift(1) != dataframe["limit_exceeded"]
+        ).cumsum()
+
+        self.df = dataframe
+
+        return 3600
