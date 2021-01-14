@@ -5,6 +5,7 @@ from typing import Callable
 import pandas as pd
 import os
 import simpy
+from datetime import datetime as dt
 
 import openclsim.model as model
 
@@ -476,6 +477,58 @@ class OffshoreEnvironment(object):
             dataframe["limit_exceeded"].shift(1) != dataframe["limit_exceeded"]
         ).cumsum()
 
-        self.df = dataframe
+        # Rename the index.
+        try:
+            dataframe.index.names = ["date"]
+        except Exception:
+            raise Exception("For some reason unable to rename the index.")
 
-        return 3600
+        # Create a dataframe of consecutive time `blocks`.
+        blocks = pd.DataFrame(
+            {
+                "start_date": dataframe.reset_index().groupby("block").date.first(),
+                "end_date": (
+                    dataframe.reset_index().groupby("block").date.first().shift(-1)
+                ),
+                "limit_exceeded": (
+                    dataframe.reset_index().groupby("block").limit_exceeded.first()
+                ),
+            }
+        )
+
+        # Derive the blocks length
+        blocks["length"] = (
+            blocks["end_date"] - blocks["start_date"]
+        ).dt.total_seconds()
+
+        self.blocks = blocks
+        self.dataframe = dataframe
+
+        # Find the first workable window and return the delay.
+        try:
+            next = blocks[
+                (blocks["length"] >= duration)
+                & (~blocks["limit_exceeded"])
+                & (blocks["start_date"] >= dt.utcfromtimestamp(env.now))
+            ].iloc[0]
+
+            delay_by = next.start_date.timestamp() - env.now
+
+            return delay_by
+
+        # It might be that our data is out of range.
+        except IndexError:
+            print("-" * 72)
+            print("The waiting on weather event has been skipped because:\n")
+            print("    (1) the dataset did not provide any sufficient window.\n")
+            print("    (2) the dataset is to short.\n")
+            print("Consider lowering the activity duration to see if it works.")
+            print("-" * 72)
+            return 0
+
+        # Any other error will be resolved by returning no delay.
+        except Exception:
+            print(
+                "The waiting on weather event has been skipped for unknown reasons.\n"
+            )
+            return 0
