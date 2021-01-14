@@ -1,11 +1,12 @@
 """Directory for the weather plugin."""
 
-import numpy as np
-from typing import Callable
-import pandas as pd
 import os
-import simpy
 from datetime import datetime as dt
+from typing import Callable
+
+import numpy as np
+import pandas as pd
+import simpy
 
 import openclsim.model as model
 
@@ -53,8 +54,8 @@ class WeatherCriterion:
                 assert minimum is None
         except Exception as e:
             raise AssertionError(
-                f"One and only one of the parameters minimum or maximum can be defined"
-                + "(error message: {e})."
+                "One and only one of the parameters minimum or maximum can be defined"
+                + f"(error message: {e})."
             )
 
         self.minimum = minimum

@@ -2,12 +2,12 @@
 
 from .delay import DelayPlugin, HasDelayPlugin
 from .weather import (
-    HasWeatherPluginActivity,
-    WeatherCriterion,
-    OffshoreEnvironment,
     HasOperationalLimits,
     HasRequestWindowPluginActivity,
+    HasWeatherPluginActivity,
+    OffshoreEnvironment,
     RequestWindowPluginActivity,
+    WeatherCriterion,
 )
 
 __all__ = [
