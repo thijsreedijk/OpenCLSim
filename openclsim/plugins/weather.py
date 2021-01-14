@@ -215,7 +215,9 @@ class HasOperationalLimits(object):
     Provide operational constraints to an activity or equipment.
 
     The HasOperationLimits class allows the user to set operational
-    limits to an activity or equipment.
+    limits to an activity or equipment. Though, the class is mainly
+    setup to be inherited from by other classes, such as the
+    `HasRequestWindowPluginActivity` (see below).
 
     Parameters
     ----------
@@ -243,12 +245,13 @@ class HasRequestWindowPluginActivity(HasOperationalLimits):
 
     An `HasRequestWindowPluginActivity` instance initialises the waiting
     on weather activity which is modelled using the
-    `RequestWindowPluginActivity`.
+    `RequestWindowPluginActivity`. For examples please refer to the
+    corresponding notebooks.
 
-    Examples
-    --------
-        >>>
-
+    Parameters
+    ----------
+        offshore_environment: OffshoreEnvironment
+            An instance of the OffshoreEnvironment class (see below).
     """
 
     def __init__(
@@ -277,7 +280,7 @@ class RequestWindowPluginActivity(model.AbstractPluginClass):
     Parameters
     ----------
         offshore_environment: OffshorEnvironment
-            An instance of the OffshoreEnvironment class.
+            An instance of the OffshoreEnvironment class (see below).
 
     """
 
@@ -313,7 +316,9 @@ class OffshoreEnvironment(object):
     Holds information about the offshore environment.
 
     An instance of the OffshoreEnvironment class holds information of
-    site specific data.
+    site specific data. Besides, the class has a certain `find_window`
+    method which searches for the first workable weather window for a
+    given activity.
 
     """
 
@@ -351,7 +356,12 @@ class OffshoreEnvironment(object):
 
         Examples
         --------
-            >>>
+            >>> import openclsim.plugins as plugins
+            >>> oe = plugins.OffshoreEnvironment()
+            >>> # Store a dataset from a *.csv file.
+            >>> oe.store_information(var="hs", filename="./file.csv")
+            >>> # Or store information about, e.g., the sites ID.
+            >>> oe.store_information(var="id", value="Offshore Site ID")
 
         """
         # Test if a variable name is (properly) provided.
@@ -442,12 +452,22 @@ class OffshoreEnvironment(object):
         The `find_window` function searches for the first workable
         weather window present in a given dataset. It requires the
         operational limits, the simulation environment and data about
-        the offshore environment.
+        the offshore environment. It will raise an error message if
+        these are not properly initialised using the
+        `OffshoreEnvironment` class. For examples, please refer to the
+        corresponding notebooks.
 
         Parameters
         ----------
             env: simpy.Environment
                 A SimPy simulation environment.
+            limit_expr: Callable
+                A (Python) function expressing the operational limits
+                in terms of critical parameters, for example, the
+                significant wave height and peak wave period
+                `f(hs, tp)`. The function should return a bool, where
+                `True` is considered as the event in which the limit
+                has been exceeded.
 
         """
         # Find which parameters are of interest.
@@ -500,9 +520,6 @@ class OffshoreEnvironment(object):
         blocks["length"] = (
             blocks["end_date"] - blocks["start_date"]
         ).dt.total_seconds()
-
-        self.blocks = blocks
-        self.dataframe = dataframe
 
         # Find the first workable window and return the delay.
         try:
