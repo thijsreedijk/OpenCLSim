@@ -2,16 +2,16 @@
 # -------------------------------------------------------------------------------------!
 # Import dependencies
 import datetime
+import os
+
 import dateutil
 import numpy as np
+import pandas as pd
+import simpy
 
 import openclsim.appendix as appendix
 import openclsim.model as model
 import openclsim.plugins as plugins
-
-import os
-import pandas as pd
-import simpy
 
 
 # -------------------------------------------------------------------------------------!
@@ -159,7 +159,7 @@ def create_sample_data():
     tp_values = np.random.random(size=(len(dates)))
 
     hs_df = pd.DataFrame({"date": dates, "hs": hs_values}).set_index("date")
-    tp_df = pd.DataFrame({"date": dates, "hs": hs_values}).set_index("date")
+    tp_df = pd.DataFrame({"date": dates, "hs": tp_values}).set_index("date")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     hs_df.to_csv(current_dir + "/data/unit_hs.csv")
