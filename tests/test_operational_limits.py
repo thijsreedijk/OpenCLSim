@@ -13,21 +13,42 @@ import openclsim.appendix as appendix
 import openclsim.model as model
 import openclsim.plugins as plugins
 
+from test_utils import assert_log
+
 
 # -------------------------------------------------------------------------------------!
-def main():
+def exec():
     """Test the simulation objects."""
-    # Create some sample data for testing purposes
-    create_sample_data()
+    # Create some sample data for testing purposes.
+    cdir = create_sample_data()
 
-    # Create an instance of the simulation environment
+    # Create an instance of the simulation environment.
     sim = SimulationEnvironment(start_date=datetime.datetime(2021, 1, 1))
 
-    # Execute simulation command
+    # Execute simulation command.
     sim.execute_simulation()
 
-    # Print the event log
+    # Test if all went right.
+    assert_log(sim.activities[0])  # Tests the activity log on bugs.
+
+    start = sim.event_log[sim.event_log["ActivityState"] == "START"].Timestamp
+    hs = sim.oe.hs.loc[start]  # Get the value for hs and tp and test.
+    tp = sim.oe.tp.loc[start]  # if its indeed below the threshold.
+
+    hs = hs.iloc[0].values[0]  # Unpacks series to float.
+    tp = tp.iloc[0].values[0]  # Unpacks series to float.
+
+    assert not limit_expression(hs, tp)  # Actual test.
+
+    # Display output.
+    print("-" * 72)
+    print("TESTS WENT ALL FINE.\n")
     print(sim.event_log)
+    print("-" * 72)
+
+    # Remove data files.
+    os.remove(cdir + "/data/unit_hs.csv")
+    os.remove(cdir + "/data/unit_tp.csv")
 
 
 # -------------------------------------------------------------------------------------!
@@ -87,7 +108,7 @@ class SimulationEnvironment(object):
             "name": "A basic activity",  # Allows us to identify.
             "limit_expr": limit_expression,  # Sets the constrains (see below).
             "offshore_environment": self.oe,  # Defines the OE.
-            "duration": 3600 * 3,  # Time in seconds it takes to finish.
+            "duration": 3600,  # Time in seconds it takes to finish.
         }
 
         # Setup the activity
@@ -120,7 +141,33 @@ class SimulationEnvironment(object):
 
 # -------------------------------------------------------------------------------------!
 class BasicActivity(plugins.HasRequestWindowPluginActivity, model.BasicActivity):
-    """Model a simple activity with operational limits."""
+    """
+    Model a simple activity with operational limits.
+
+    An instance of the `BasicActivity` class holds the required
+    activity parameters for the model to be processed. The class sets up
+    the framework for defining activities. The `model.BasicActivity`
+    parent class provides the main part of the framework, the
+    `plugins.HasRequestWindowPluginActivity` adds the feature of
+    operational limits to the activity.
+
+    Parameters
+    ----------
+        env: simpy.Environment
+            A SimPy simulation environment.
+        registry: dict
+            A dictionary in which the activities are stored.
+        name: str
+            A descriptive name for storing the activity in the log.
+        duration: int
+            The number of seconds it takes to execute the activity.
+        offshore_environment: plugins.OffshoreEnvironment
+            An instance of the OffshoreEnvironment.
+        limit_expr: Callable
+            A Python function expressing the operational limits in
+            terms of offshore environment parameters. See an example
+            below.
+    """
 
     def __init__(self, **kwargs):
         """Class constructor."""
@@ -159,15 +206,15 @@ def create_sample_data():
     tp_values = np.random.random(size=(len(dates)))
 
     hs_df = pd.DataFrame({"date": dates, "hs": hs_values}).set_index("date")
-    tp_df = pd.DataFrame({"date": dates, "hs": tp_values}).set_index("date")
+    tp_df = pd.DataFrame({"date": dates, "tp": tp_values}).set_index("date")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     hs_df.to_csv(current_dir + "/data/unit_hs.csv")
     tp_df.to_csv(current_dir + "/data/unit_tp.csv")
 
-    return
+    return current_dir
 
 
 # -------------------------------------------------------------------------------------!
 if __name__ == "__main__":
-    main()
+    exec()

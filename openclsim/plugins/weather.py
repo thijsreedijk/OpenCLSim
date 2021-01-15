@@ -540,7 +540,7 @@ class OffshoreEnvironment(object):
             print("The waiting on weather event has been skipped because:\n")
             print("    (1) the dataset did not provide any sufficient window.\n")
             print("    (2) the dataset is to short.\n")
-            print("Consider lowering the activity duration to see if it works.")
+            print("Consider lowering the activity duration to test if runs properly.")
             print("-" * 72)
             return 0
 
