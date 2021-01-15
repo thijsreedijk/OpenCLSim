@@ -13,7 +13,7 @@ import openclsim.appendix as appendix
 import openclsim.model as model
 import openclsim.plugins as plugins
 
-from test_utils import assert_log
+from .test_utils import assert_log
 
 
 # -------------------------------------------------------------------------------------!
