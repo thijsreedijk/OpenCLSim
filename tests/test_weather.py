@@ -106,17 +106,11 @@ def test_weather():
     metocean_df["ts"] = metocean_df.index.values.astype(float) / 1_000_000_000
 
     sailing_crit = plugin.WeatherCriterion(
-        name="sailing_crit",
-        condition="Hs [m]",
-        maximum=6,
-        window_length=3600,
+        name="sailing_crit", condition="Hs [m]", maximum=6, window_length=3600
     )
 
     loading_crit = plugin.WeatherCriterion(
-        name="loading_crit",
-        condition="Hs [m]",
-        maximum=4.5,
-        window_length=3600,
+        name="loading_crit", condition="Hs [m]", maximum=4.5, window_length=3600
     )
 
     single_run = [

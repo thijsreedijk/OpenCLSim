@@ -1,6 +1,12 @@
 """Directory for the weather plugin."""
 
+import os
+from datetime import datetime as dt
+from typing import Callable
+
 import numpy as np
+import pandas as pd
+import simpy
 
 import openclsim.model as model
 
@@ -34,8 +40,9 @@ class WeatherCriterion:
         *args,
         **kwargs,
     ):
+        """Class constructor."""
         super().__init__(*args, **kwargs)
-        """Initialization"""
+
         self.name = name
         self.condition = condition
 
@@ -47,7 +54,8 @@ class WeatherCriterion:
                 assert minimum is None
         except Exception as e:
             raise AssertionError(
-                f"One and only one of the parameters minimum or maximum can be defined (error message: {e})."
+                "One and only one of the parameters minimum or maximum can be defined"
+                + f"(error message: {e})."
             )
 
         self.minimum = minimum
@@ -61,6 +69,7 @@ class HasWeatherPluginActivity:
     """Mixin forActivity to initialize WeatherPluginActivity."""
 
     def __init__(self, metocean_criteria, metocean_df, *args, **kwargs):
+        """Class constructor."""
         super().__init__(*args, **kwargs)
 
         if (
@@ -81,11 +90,13 @@ class WeatherPluginActivity(model.AbstractPluginClass):
     """Mixin for MoveActivity to initialize TestPluginMoveActivity."""
 
     def __init__(self, weather_criteria=None, metocean_df=None):
+        """Class constructor."""
         assert isinstance(weather_criteria, WeatherCriterion)
         self.weather_criteria = weather_criteria
         self.metocean_df = metocean_df
 
     def pre_process(self, env, activity_log, activity, *args, **kwargs):
+        """Pre-processor."""
         if self.weather_criteria is not None:
             t = float(env.now)
             determined_range = self.check_constraint(start_time=t)
@@ -105,6 +116,7 @@ class WeatherPluginActivity(model.AbstractPluginClass):
             return {}
 
     def check_constraint(self, start_time):
+        """Check for constraints."""
         res = self.process_data(self.weather_criteria)
         windows = np.array(res["windows"])
         ts_start = res["dataset_start"]
@@ -120,7 +132,7 @@ class WeatherPluginActivity(model.AbstractPluginClass):
         return list(filter_windows[0])
 
     def process_data(self, criterion) -> None:
-
+        """Derive weather windows."""
         col = criterion.condition
         orig_data = self.metocean_df.copy()
 
@@ -196,3 +208,345 @@ class WeatherPluginActivity(model.AbstractPluginClass):
             "windows": windows,
         }
         return result
+
+
+# -------------------------------------------------------------------------------------!
+class HasOperationalLimits(object):
+    """
+    Provide operational constraints to an activity or equipment.
+
+    The HasOperationLimits class allows the user to set operational
+    limits to an activity or equipment. Though, the class is mainly
+    setup to be inherited from by other classes, such as the
+    `HasRequestWindowPluginActivity` (see below).
+
+    Parameters
+    ----------
+        limit_expr: Callable
+            A (Python) function expressing the operational limits in
+            terms of critical parameters, for example, the significant
+            wave height and peak wave period `f(hs, tp)`. The function
+            should return a bool, where `True` is considered as the
+            event in which the limit has been exceeded.
+
+    """
+
+    def __init__(self, limit_expr: Callable, *args, **kwargs):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        # Instance attributes
+        self.limit_expr = limit_expr
+
+
+# -------------------------------------------------------------------------------------!
+class HasRequestWindowPluginActivity(HasOperationalLimits):
+    """
+    Initialise the RequestWindowPluginActivity.
+
+    An `HasRequestWindowPluginActivity` instance initialises the waiting
+    on weather activity which is modelled using the
+    `RequestWindowPluginActivity`. For examples please refer to the
+    corresponding notebooks.
+
+    Parameters
+    ----------
+        offshore_environment: OffshoreEnvironment
+            An instance of the OffshoreEnvironment class (see below).
+    """
+
+    def __init__(
+        self, offshore_environment: "OffshoreEnvironment" = None, *args, **kwargs
+    ):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        if isinstance(self, model.PluginActivity) and isinstance(
+            offshore_environment, OffshoreEnvironment
+        ):
+            plugin = RequestWindowPluginActivity(
+                offshore_environment=offshore_environment
+            )
+            self.register_plugin(plugin=plugin, priority=2)
+
+
+# -------------------------------------------------------------------------------------!
+class RequestWindowPluginActivity(model.AbstractPluginClass):
+    """
+    Models the activity of a waiting on weather event.
+
+    The RequestWindowPluginActivity class is used to model the activity
+    of a waiting on weather event.
+
+    Parameters
+    ----------
+        offshore_environment: OffshorEnvironment
+            An instance of the OffshoreEnvironment class (see below).
+
+    """
+
+    def __init__(self, offshore_environment: "OffshoreEnvironment", *args, **kwargs):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        # Instance attributes
+        self.oe = offshore_environment
+
+    def pre_process(self, env, activity_log, activity, *args, **kwargs):
+        """
+        Apply the waiting on weather event.
+
+        The `pre_process` function applies the waiting on weather event
+        ahead of the `main` activity.
+
+        """
+        activity_delay = self.oe.find_window(
+            env=env, limit_expr=activity.limit_expr, duration=activity.duration
+        )
+
+        activity_label = {"type": "plugin", "ref": "waiting on weather"}
+
+        return activity.delay_processing(
+            env, activity_label, activity_log, activity_delay
+        )
+
+
+# -------------------------------------------------------------------------------------!
+class OffshoreEnvironment(object):
+    """
+    Holds information about the offshore environment.
+
+    An instance of the OffshoreEnvironment class holds information of
+    site specific data. Besides, the class has a certain `find_window`
+    method which searches for the first workable weather window for a
+    given activity.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+    def store_information(
+        self, var: str = None, value=None, filename: str = None, **kwargs
+    ):
+        """
+        Store metocean information in the dataset.
+
+        The store_information function provides the user a method to
+        pass information to the dataset about site specific metocean
+        conditions. The function takes either a single value using the
+        `value` argument, or a series of values from a `.csv` file. The
+        latter requires two columns of data: (1) timestamps from when
+        the data was recorded and (2) the corresponding values. Besides,
+        the first row of the file is processed as column names.
+
+        If a filename is provided, the pandas package is used to read
+        the contents. For that reason, it is possible to manipulate the
+        reading process using keyword-arguments. Please refer to the
+        `pandas.read_csv` documentation.
+
+        Parameters
+        ----------
+            var: str
+                Variable name as a single word or abbriviation.
+            value: str
+                Value of the corresponding variable.
+            filename: str
+                Path to the `.csv` file.
+
+        Examples
+        --------
+            >>> import openclsim.plugins as plugins
+            >>> oe = plugins.OffshoreEnvironment()
+            >>> # Store a dataset from a *.csv file.
+            >>> oe.store_information(var="hs", filename="./file.csv")
+            >>> # Or store information about, e.g., the sites ID.
+            >>> oe.store_information(var="id", value="Offshore Site ID")
+
+        """
+        # Test if a variable name is (properly) provided.
+        if (var is not None) and (isinstance(var, str) is False):
+            raise ValueError("The `var` argument accepts only a `string` type.")
+        elif var is None:
+            raise TypeError(
+                "`store_information` requires at least the positional arguments: `var`"
+                + " and `value` or `filename`."
+            )
+        else:
+            pass
+
+        # Test if a value or filename is (properly) provided.
+        if (value is None) and (filename is None):
+            raise TypeError(
+                "`store_information` requires at least one of the positional arguments:"
+                + " `value` or `filename` to be set."
+            )
+        elif (value is not None) and (filename is not None):
+            raise TypeError(
+                "`store_information accepts either a `value` or `filename` to be set."
+            )
+        elif (filename is not None) and (isinstance(filename, str) is False):
+            raise ValueError("The `filename` argument accepts only a `string` type.")
+        elif (filename is not None) and (os.path.isfile(filename) is False):
+            raise FileNotFoundError(f"Unable to find the file: `{filename}`.")
+        elif (filename is not None) and (len(filename) == 0):
+            raise ValueError("The `filename` argument received an empty `string`.")
+        else:
+            pass
+
+        # Try to store the information as an instance attribute.
+        if (value is not None) and (filename is None):
+            try:
+                self.__dict__[var] = value
+            except Exception:
+                raise Exception("For some reason I'm unable to store the information.")
+
+        # Try to store the data in a pandas dataframe.
+        elif (value is None) and (filename is not None) and (os.path.isfile(filename)):
+
+            # Read and import file.
+            try:
+                dataframe = pd.read_csv(filename, **kwargs)
+            except Exception:
+                raise Exception("Unable to read `.csv` properly.")
+
+            # Parse dates to datetime.datetime objects.
+            try:
+                dataframe.iloc[:, 0] = pd.to_datetime(dataframe.iloc[:, 0])
+            except Exception:
+                raise Exception(
+                    "Unable to parse the timestamps to datetime.datetime objects. "
+                    + "Make sure the format is either:\n `dd-mm-yy hh:mm:ss` or\n "
+                    + "`dd/mm/yy hh:mm:ss`"
+                ) from None
+
+            # Parse possible string values to numeric.
+            try:
+                dataframe.iloc[:, 1] = pd.to_numeric(
+                    dataframe.iloc[:, 1], errors="coerce"
+                )
+            except Exception:
+                raise Exception(
+                    "For some reason I'm unable to transform values to numeric values."
+                )
+
+            # Set dates as index
+            try:
+                columns = dataframe.columns
+                dataframe = dataframe.set_index(columns[0])
+            except Exception:
+                raise Exception("For some reason I'm Unable to set the date as index.")
+
+            # Store dataframe as instance attribute
+            self.__dict__[var] = dataframe
+
+        else:
+            pass
+
+    def find_window(
+        self, env: simpy.Environment, limit_expr: Callable, duration: float, **kwargs
+    ):
+        """
+        Find the next workable weather window.
+
+        The `find_window` function searches for the first workable
+        weather window present in a given dataset. It requires the
+        operational limits, the simulation environment and data about
+        the offshore environment. It will raise an error message if
+        these are not properly initialised using the
+        `OffshoreEnvironment` class. For examples, please refer to the
+        corresponding notebooks.
+
+        Parameters
+        ----------
+            env: simpy.Environment
+                A SimPy simulation environment.
+            limit_expr: Callable
+                A (Python) function expressing the operational limits
+                in terms of critical parameters, for example, the
+                significant wave height and peak wave period
+                `f(hs, tp)`. The function should return a bool, where
+                `True` is considered as the event in which the limit
+                has been exceeded.
+
+        """
+        # Find which parameters are of interest.
+        vars = list(limit_expr.__code__.co_varnames)
+
+        # Test if they are allocated within the attributes.
+        try:
+            series = [self.__dict__[var] for var in vars]
+
+        except KeyError:
+            raise KeyError(
+                "`limit_expr` uses arguments that are not present in the database."
+            ) from None
+
+        # Join the data into a single dataframe
+        try:
+            dataframe = pd.concat(series, axis="columns")
+            dataframe.columns = vars
+        except Exception:
+            raise Exception("Unable to merge the constraining variables.")
+
+        # Test if the limit is exceeded, True indicates it is.
+        dataframe["limit_exceeded"] = limit_expr(*[dataframe[var] for var in vars])
+
+        # Create consecutive time `blocks`.
+        dataframe["block"] = (
+            dataframe["limit_exceeded"].shift(1) != dataframe["limit_exceeded"]
+        ).cumsum()
+
+        # Rename the index.
+        try:
+            dataframe.index.names = ["date"]
+        except Exception:
+            raise Exception("For some reason unable to rename the index.")
+
+        # Create a dataframe of consecutive time `blocks`.
+        blocks = pd.DataFrame(
+            {
+                "start_date": dataframe.reset_index().groupby("block").date.first(),
+                "end_date": (
+                    dataframe.reset_index().groupby("block").date.first().shift(-1)
+                ),
+                "limit_exceeded": (
+                    dataframe.reset_index().groupby("block").limit_exceeded.first()
+                ),
+            }
+        )
+
+        # Derive the blocks length
+        blocks["length"] = (
+            blocks["end_date"] - blocks["start_date"]
+        ).dt.total_seconds()
+
+        # Find the first workable window and return the delay.
+        try:
+            next = blocks[
+                (blocks["length"] >= duration)
+                & (~blocks["limit_exceeded"])
+                & (blocks["start_date"] >= dt.utcfromtimestamp(env.now))
+            ].iloc[0]
+
+            delay_by = next.start_date.timestamp() - env.now
+
+            return delay_by
+
+        # It might be that our data is out of range.
+        except IndexError:
+            print("-" * 72)
+            print("The waiting on weather event has been skipped because:\n")
+            print("    (1) the dataset did not provide any sufficient window.\n")
+            print("    (2) the dataset is to short.\n")
+            print("Consider lowering the activity duration to test if runs properly.")
+            print("-" * 72)
+            return 0
+
+        # Any other error will be resolved by returning no delay.
+        except Exception:
+            print(
+                "The waiting on weather event has been skipped for unknown reasons.\n"
+            )
+            return 0
