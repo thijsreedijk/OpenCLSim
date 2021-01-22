@@ -29,6 +29,10 @@ class SimulationEnvironment(abc.ABC):
         define_offshore_environment
             class method to create an instance of the
             `OffshoreEnvironment` class.
+        define_entities
+            class method to define the entities involved during the
+            construction. After defining the entities, list them into
+            `self.entities = [..]` to show them in the `event_log`.
         define_operation
             class method to define the installation operation. Within
             this function the operation should be constructed.
