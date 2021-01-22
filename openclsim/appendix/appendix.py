@@ -2,6 +2,8 @@
 # -------------------------------------------------------------------------------------!
 from collections.abc import Iterable
 
+from functools import reduce
+import logging
 import pandas as pd
 
 
@@ -35,7 +37,7 @@ def remove_item(d: dict, k: str or list):
 
 
 # -------------------------------------------------------------------------------------!
-def get_event_log(activity_list: list):
+def get_event_log(activity_list: list, entities: list = None):
     """
     Return the event log of the installation process.
 
@@ -68,6 +70,38 @@ def get_event_log(activity_list: list):
     dataframe["Description"] = dataframe["Description"].replace(id_map)
 
     event_log = dataframe[["Timestamp", "ActivityState", "Description", "ActivityID"]]
+
+    # Read the state of the entities
+    try:
+        entity_logs = [
+            (
+                pd.DataFrame(entity.log)[["Timestamp", "ActivityState", "ObjectState"]]
+            ).rename(columns={"ObjectState": entity.name})
+            for entity in entities
+        ]
+
+        merged_log = (
+            reduce(
+                lambda left, right: pd.merge(
+                    left=left,
+                    right=right,
+                    how="outer",
+                    left_on=["Timestamp", "ActivityState"],
+                    right_on=["Timestamp", "ActivityState"],
+                ),
+                [event_log, *entity_logs],
+            )
+            .fillna(method="ffill")
+            .fillna(method="bfill")
+        )
+
+        return merged_log
+
+    except ValueError:
+        logging.warning("Could not merge the logs of entities and activities.")
+
+    except Exception:
+        logging.debug("Entities were not read.")
 
     return event_log
 

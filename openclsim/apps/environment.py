@@ -111,11 +111,16 @@ class SimulationEnvironment(abc.ABC):
     @property
     def event_log(self):
         """Return the event log."""
+        # Test if user defined the simulation properly.
         assert not isinstance(
             self.activities, type(None)
         ), "`self.activities` = [..] was not defined in `define_operation`."
         assert isinstance(self.activities, list), "Expected a list of base activities."
-        return appendix.get_event_log(activity_list=self.activities)
+
+        # Return the event log.
+        return appendix.get_event_log(
+            activity_list=self.activities, entities=self.entities
+        )
 
     @property
     def project_length(self):

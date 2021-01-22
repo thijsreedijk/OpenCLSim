@@ -24,11 +24,7 @@ class Processor(SimpyObject):
         """Initialization"""
 
     def process(
-        self,
-        origin,
-        destination,
-        shiftamount_fcn,
-        id_="default",
+        self, origin, destination, shiftamount_fcn, id_="default",
     ):
         """
         Move content from ship to the site or from the site to the ship.
@@ -37,10 +33,8 @@ class Processor(SimpyObject):
         Yields the time it takes to process.
         """
 
-        assert isinstance(origin, HasContainer) or isinstance(origin, HasContainer)
-        assert isinstance(destination, HasContainer) or isinstance(
-            destination, HasContainer
-        )
+        assert isinstance(origin, HasContainer)
+        assert isinstance(destination, HasContainer)
         assert isinstance(origin, HasResource)
         assert isinstance(destination, HasResource)
         assert isinstance(self, Log)
@@ -141,11 +135,7 @@ class Processor(SimpyObject):
                 )
 
     def determine_processor_amount(
-        self,
-        origin,
-        destination,
-        amount=None,
-        id_="default",
+        self, origin, destination, amount=None, id_="default",
     ):
         """Determine the maximum amount that can be carried."""
         dest_cont = destination.container
