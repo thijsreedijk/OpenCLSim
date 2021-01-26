@@ -87,9 +87,12 @@ class SimulationEnvironment(abc.ABC):
 
     def initiate_simulation(self):
         """Initiate the simulation."""
+        # Tests to run a complete simulation.
         try:
-            # Tests to run a complete simulation.
-            self.offshore_environment = self.define_offshore_environment()
+            # Make sure not to reload the offshore environment.
+            if not self.offshore_environment:
+                self.offshore_environment = self.define_offshore_environment()
+
             self.entities = self.define_entities()
             self.activity = self.define_operation()
 
@@ -111,6 +114,40 @@ class SimulationEnvironment(abc.ABC):
         except Exception:
             # In any other case, simulation should be aborted.
             raise Exception("Aborted the simulation.")
+
+    def restart_simulation(self, start_date: datetime.datetime = None, **kwargs):
+        """
+        Restart the simulation with new input variables.
+
+        The `restart_simulation` method allows the user to run the
+        simulation over again with adjusted settings -- without 
+        creating a new instance. Especially useful to avoid reloading
+        of metocean conditions. Through keyword-arguments (kwargs), any
+        attribute other than `start_date` may be redefined. 
+
+        Parameters
+        ----------
+            start_date: datetime.datetime
+                A datetime object specifying the simulation start date.
+        """
+        # If the start date has been redefined.
+        try:
+            start_utc = start_date.replace(tzinfo=dateutil.tz.UTC)
+            start_epoch = start_utc.timestamp()
+            self.start_date = start_date
+        except Exception:
+            start_utc = self.start_date.replace(tzinfo=dateutil.tz.UTC)
+            start_epoch = start_utc.timestamp()
+
+        # Adjust any other property through kwargs.
+        self.__dict__.update(kwargs)
+
+        # Initialise a new SimPy simulation environment
+        self.env = simpy.Environment(initial_time=start_epoch)
+        self.registry = {}
+
+        # Execute new run.
+        return self.initiate_simulation()
 
     @property
     def event_log(self):

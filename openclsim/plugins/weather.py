@@ -4,6 +4,7 @@ import os
 from datetime import datetime as dt
 from typing import Callable
 
+import logging
 import numpy as np
 import pandas as pd
 import simpy
@@ -231,12 +232,23 @@ class HasOperationalLimits(object):
 
     """
 
-    def __init__(self, limit_expr: Callable, *args, **kwargs):
+    def __init__(self, limit_expr: Callable = None, *args, **kwargs):
         """Class constructor."""
         super().__init__(*args, **kwargs)
 
         # Instance attributes
-        self.limit_expr = limit_expr
+        if isinstance(limit_expr, Callable):
+            self.limit_expr = limit_expr
+        elif isinstance(self, model.PluginActivity) and not isinstance(
+            limit_expr, Callable
+        ):
+            logging.warn(
+                "openclsim.plugins.HasOperationalLimits: "
+                + "Operational Limits were not provided to: "
+                + self.name
+            )
+        else:
+            logging.warn("Operational limits were not set.")
 
 
 # -------------------------------------------------------------------------------------!
@@ -268,6 +280,19 @@ class HasRequestWindowPluginActivity(HasOperationalLimits):
                 offshore_environment=offshore_environment
             )
             self.register_plugin(plugin=plugin, priority=2)
+        elif isinstance(self, model.PluginActivity) and not isinstance(
+            offshore_environment, OffshoreEnvironment
+        ):
+            logging.warn(
+                "openclsim.plugins.HasRequestWindowPluginActivity: "
+                + "The offshore environment was not defined for: "
+                + self.name
+            )
+        else:
+            logging.warn(
+                "openclsim.plugins.HasRequestWindowPluginActivity: "
+                + "The offshore environment was not defined"
+            )
 
 
 # -------------------------------------------------------------------------------------!
@@ -290,7 +315,7 @@ class RequestWindowPluginActivity(model.AbstractPluginClass):
         super().__init__(*args, **kwargs)
 
         # Instance attributes
-        self.oe = offshore_environment
+        self.offshore_environment = offshore_environment
 
     def pre_process(self, env, activity_log, activity, *args, **kwargs):
         """
@@ -300,7 +325,7 @@ class RequestWindowPluginActivity(model.AbstractPluginClass):
         ahead of the `main` activity.
 
         """
-        activity_delay = self.oe.find_window(
+        activity_delay = self.offshore_environment.find_window(
             env=env, limit_expr=activity.limit_expr, duration=activity.duration
         )
 
@@ -419,7 +444,7 @@ class OffshoreEnvironment(object):
                     "Unable to parse the timestamps to datetime.datetime objects. "
                     + "Make sure the format is either:\n `dd-mm-yy hh:mm:ss` or\n "
                     + "`dd/mm/yy hh:mm:ss`"
-                ) from None
+                )
 
             # Parse possible string values to numeric.
             try:
