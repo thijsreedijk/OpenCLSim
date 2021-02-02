@@ -470,7 +470,12 @@ class OffshoreEnvironment(object):
             pass
 
     def find_window(
-        self, env: simpy.Environment, limit_expr: Callable, duration: float, **kwargs
+        self,
+        env: simpy.Environment,
+        limit_expr: Callable,
+        duration: float,
+        all_blocks: bool = False,
+        **kwargs,
     ):
         """
         Find the next workable weather window.
@@ -494,6 +499,8 @@ class OffshoreEnvironment(object):
                 `f(hs, tp)`. The function should return a bool, where
                 `True` is considered as the event in which the limit
                 has been exceeded.
+            duration: float
+                The expected length of the activity in seconds.
 
         """
         # Find which parameters are of interest.
@@ -557,7 +564,10 @@ class OffshoreEnvironment(object):
 
             delay_by = next.start_date.timestamp() - env.now
 
-            return delay_by
+            if all_blocks:
+                return delay_by, blocks
+            else:
+                return delay_by
 
         # It might be that our data is out of range.
         except IndexError:

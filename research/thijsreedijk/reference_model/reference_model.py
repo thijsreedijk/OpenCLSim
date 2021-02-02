@@ -20,10 +20,10 @@ class ReferenceModel(apps.SimulationEnvironment):
 
         # Define activity lengths
         self.load_component = 3600
-        self.transit_to = 3600 * 24 * 3
+        self.transit_to = 3600 * 24 * 1
         self.positioning = 3600
-        self.install_component = 3600
-        self.transit_from = 3600
+        self.install_component = 3600 * 12
+        self.transit_from = 3600 * 24 * 1
 
     def define_offshore_environment(self):
         """Define the offshore environment."""
@@ -117,7 +117,7 @@ class ReferenceModel(apps.SimulationEnvironment):
             origin=self.aeolus,
             destination=self.owf,
             offshore_environment=self.offshore_environment,
-            limit_expr=lambda Hs, Tp: (Hs > 1) & (Tp > 1)
+            limit_expr=lambda Hs, Tp: (Hs > 1) & (Tp > 7),
         )
 
         transit_to_port = apps.Transit(
