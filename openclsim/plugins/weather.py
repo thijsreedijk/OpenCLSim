@@ -11,6 +11,8 @@ import simpy
 
 import openclsim.model as model
 
+logger = logging.getLogger(__name__)
+
 
 class WeatherCriterion:
     """
@@ -242,13 +244,13 @@ class HasOperationalLimits(object):
         elif isinstance(self, model.PluginActivity) and not isinstance(
             limit_expr, Callable
         ):
-            logging.warn(
-                "openclsim.plugins.HasOperationalLimits: "
+            logger.debug(
+                "HasOperationalLimits: "
                 + "Operational Limits were not provided to: "
                 + self.name
             )
         else:
-            logging.warn("Operational limits were not set.")
+            logger.debug("Operational limits were not set.")
 
 
 # -------------------------------------------------------------------------------------!
@@ -283,14 +285,14 @@ class HasRequestWindowPluginActivity(HasOperationalLimits):
         elif isinstance(self, model.PluginActivity) and not isinstance(
             offshore_environment, OffshoreEnvironment
         ):
-            logging.warn(
-                "openclsim.plugins.HasRequestWindowPluginActivity: "
+            logger.debug(
+                "HasRequestWindowPluginActivity: "
                 + "The offshore environment was not defined for: "
                 + self.name
             )
         else:
-            logging.warn(
-                "openclsim.plugins.HasRequestWindowPluginActivity: "
+            logger.debug(
+                "HasRequestWindowPluginActivity: "
                 + "The offshore environment was not defined"
             )
 
@@ -570,18 +572,25 @@ class OffshoreEnvironment(object):
                 return delay_by
 
         # It might be that our data is out of range.
-        except IndexError:
-            print("-" * 72)
-            print("The waiting on weather event has been skipped because:\n")
-            print("    (1) the dataset did not provide any sufficient window.\n")
-            print("    (2) the dataset is to short.\n")
-            print("Consider lowering the activity duration to test if runs properly.")
-            print("-" * 72)
+        except IndexError as e:
+            logger.info(
+                "\n"
+                + "-" * 72
+                + "\n"
+                + "The waiting on weather event has been skipped because:\n"
+                + "    (1) the dataset did not provide any sufficient window.\n"
+                + "    (2) the dataset is to short.\n"
+                + "Consider lowering the activity duration to test if runs properly.\n"
+                + "-" * 72
+                + "\n"
+            )
+            logger.debug(e)
             return 0
 
         # Any other error will be resolved by returning no delay.
-        except Exception:
-            print(
+        except Exception as e:
+            logger.info(
                 "The waiting on weather event has been skipped for unknown reasons.\n"
             )
+            logger.debug(e)
             return 0
