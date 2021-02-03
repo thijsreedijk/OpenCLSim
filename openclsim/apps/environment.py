@@ -120,10 +120,10 @@ class SimulationEnvironment(abc.ABC):
         Restart the simulation with new input variables.
 
         The `restart_simulation` method allows the user to run the
-        simulation over again with adjusted settings -- without 
+        simulation over again with adjusted settings -- without
         creating a new instance. Especially useful to avoid reloading
         of metocean conditions. Through keyword-arguments (kwargs), any
-        attribute other than `start_date` may be redefined. 
+        attribute other than `start_date` may be redefined.
 
         Parameters
         ----------

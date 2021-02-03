@@ -1,10 +1,12 @@
 """The reference approach to project estimation."""
 # -------------------------------------------------------------------------------------!
-import openclsim.apps as apps
-import openclsim.plugins as plugins
-import openclsim.model as model
 import datetime
+
 import shapely
+
+import openclsim.apps as apps
+import openclsim.model as model
+import openclsim.plugins as plugins
 
 
 # -------------------------------------------------------------------------------------!
@@ -32,11 +34,11 @@ class ReferenceModel(apps.SimulationEnvironment):
 
         # Store information
         offshore_environment.store_information(
-            var="Hs", filename="../data/gemini_Hs.csv", delimiter=";"
+            var="Hs", filename="../data/Hs.csv", delimiter=";"
         )
 
         offshore_environment.store_information(
-            var="Tp", filename="../data/gemini_Tp.csv", delimiter=";"
+            var="Tp", filename="../data/Tp.csv", delimiter=";"
         )
 
         # Return the offshore environment
