@@ -1,8 +1,21 @@
 """Directory for the weather plugin."""
+# -------------------------------------------------------------------------------------!
+
+import datetime as dt
+
+from typing import Callable
+
+import pandas as pd
 
 import numpy as np
 
 import openclsim.model as model
+
+from inspect import getfullargspec
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WeatherCriterion:
@@ -196,3 +209,235 @@ class WeatherPluginActivity(model.AbstractPluginClass):
             "windows": windows,
         }
         return result
+
+
+# -------------------------------------------------------------------------------------!
+class HasOperationalLimits(object):
+    """Impose operational limits on a process."""
+
+    def __init__(self, weather_resource=None, limit_expr=None, *args, **kwargs) -> None:
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        # Assess if weather_resource is instance of WeatherResource.
+        assert isinstance(
+            weather_resource, WeatherResource
+        ), "weather_resource should be an instance of WeatherResource"
+
+        # Assign weather resource to activity.
+        self.weather_resource = weather_resource
+
+        # Add activity to database of weather resource.
+        self.weather_resource.store_activity(id=self.id, limit_expr=limit_expr)
+
+
+# -------------------------------------------------------------------------------------!
+class HasRequestWindowPluginActivity(HasOperationalLimits):
+    """Add a request window pre-process to a process."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        # Assess if plugin was properly called.
+        assert isinstance(
+            self, model.PluginActivity
+        ), "Plugin was unable to initialise."
+
+        # Define the activity.
+        plugin = RequestWindowPluginActivity(weather_resource=self.weather_resource)
+
+        # Register the plugin activity.
+        self.register_plugin(plugin=plugin, priority=2)
+
+
+# -------------------------------------------------------------------------------------!
+class RequestWindowPluginActivity(model.AbstractPluginClass):
+    """Processes the request window pre-process."""
+
+    def __init__(self, weather_resource, *args, **kwargs) -> None:
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        self.weather_resource = weather_resource
+
+    def pre_process(self, env, activity_log, activity, *args, **kwargs):
+        """Apply the activity prior to the actual activity."""
+        # Find the required delay.
+        activity_delay = self.weather_resource.next_suitable_window(
+            env=env, id=activity.id, window_length=activity.duration
+        )
+
+        activity_label = {"type": "plugin", "ref": "waiting on weather"}
+
+        return activity.delay_processing(
+            env, activity_label, activity_log, activity_delay
+        )
+
+
+# -------------------------------------------------------------------------------------!
+class WeatherResource(object):
+    """Build a database with the relevant data."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Class constructor."""
+        super().__init__(*args, **kwargs)
+
+        # Setup databases.
+        self.activity_database = {}
+        self.conditions_database = pd.DataFrame(columns=["Timestamp"])
+
+    def binary_sequence_generator(self, limit_expr: Callable) -> pd.DataFrame:
+        """Transform time-series into workability states."""
+        # Make sure limit_expr is a python function.
+        assert isinstance(limit_expr, Callable), "limit_expr is not a python function."
+
+        # Create a temporary copy of the conditions database.
+        df = self.conditions_database.copy()
+
+        # Determine the limit state function parameters.
+        vars_ = getfullargspec(limit_expr)[0]
+
+        # Remove `self` if it's in the variables.
+        if "self" in vars_:
+            vars_.remove("self")
+
+        # Assess if the variables are in the database.
+        assert set(vars_) <= set(
+            df.columns
+        ), "Parameter(s): {0} of limit expression is/are not in dataset.".format(
+            set(vars_) - set(df.columns)
+        )
+
+        # Find the binary sequence.
+        df["violated"] = limit_expr(*[df[var] for var in vars_])
+
+        # Return new dataset.
+        return df
+
+    def compute_windows(self, d: pd.DataFrame) -> pd.DataFrame:
+        """Compute weather windows using a weather window analysis."""
+        # Assess if `d` is a pandas dataframe.
+        assert isinstance(d, pd.DataFrame), "`d` must be a pandas.DataFrame"
+
+        # Assess if timestamps in columns of dataframe.
+        assert "Timestamp" in d.columns, "'Timestamp' not in columns of `d`."
+
+        # Assess if violated in columns of dataframe.
+        assert "violated" in d.columns, "'violated' not in columns of `d`."
+
+        # Find consecutive blocks.
+        d["block"] = (d["violated"].shift(1) != d["violated"]).cumsum()
+
+        # Derive the windows.
+        blocks = pd.DataFrame(
+            dict(
+                start_date=d.groupby("block")["Timestamp"].first(),
+                stop_date=d.groupby("block")["Timestamp"].last(),
+                violated=d.groupby("block")["violated"].first(),
+            )
+        )
+
+        # Fill the latest stop date by the end date of the record.
+        # blocks.loc[len(blocks) - 1, "stop_date"] = d["Timestamp"].iloc[-1]
+
+        # Determine the blocks' length.
+        blocks["length"] = blocks["stop_date"] - blocks["start_date"]
+
+        # Return weather windows.
+        return blocks
+
+    def store_activity(self, id, limit_expr, *args, **kwargs):
+        """Store OpenCLSim activity in database."""
+        # Perform the weather window analysis.
+        binary_sequence = self.binary_sequence_generator(limit_expr=limit_expr)
+        windows = self.compute_windows(d=binary_sequence)
+
+        # Store the activity and its windows in database.
+        self.activity_database[str(id)] = dict(windows=windows)
+
+    def store_information(self, data: pd.DataFrame = None, *args, **kwargs):
+        """
+        Store information in the conditions database.
+        
+        Stores relevant data in the database. Requires the data-argument
+        to be a pandas.DataFrame that has at least a `datetime` column.
+        """
+        # Assert if datetime in columns.
+        assert "datetime" in data.columns, "Could not find datetime column in data."
+
+        # If the database is empty, append the data.
+        if len(self.conditions_database) == 0:
+            self.conditions_database = data.rename(dict(datetime="Timestamp"), axis=1)
+
+        elif len(self.conditions_database != 0):
+            data = data.rename(dict(datetime="Timestamp"), axis=1)
+
+            self.conditions_database = pd.merge(
+                left=self.conditions_database, right=data, on="Timestamp", how="outer"
+            ).sort_values("Timestamp")
+
+    def next_suitable_window(self, env, id, window_length, *args, **kwargs):
+        """Query database for the next suitable weather window."""
+        # Find windows from database.
+        windows = self.activity_database[id]["windows"]
+
+        # Find the first workable weather window
+        try:
+
+            # Assess if currently there is a workable window.
+            current_window = windows.loc[
+                (windows["start_date"] <= dt.datetime.utcfromtimestamp(env.now))
+                & (dt.datetime.utcfromtimestamp(env.now) < windows["stop_date"])
+            ]
+
+            current_window_length = (
+                (current_window["stop_date"] - dt.datetime.utcfromtimestamp(env.now))
+                .dt.total_seconds()
+                .iloc[0]
+            )
+
+            if (current_window_length >= window_length) & (
+                ~current_window["violated"].iloc[0]
+            ):
+                delay_by = 0
+
+            # otherwise search for the next available window.
+            else:
+                first = windows.loc[
+                    (~windows["violated"])
+                    & (windows["start_date"] > dt.datetime.utcfromtimestamp(env.now))
+                    & (windows["length"].dt.total_seconds() >= window_length)
+                ].iloc[0]
+
+                delay_by = first.start_date.timestamp() - env.now
+
+            return delay_by
+
+        except IndexError as e:
+
+            logger.debug(
+                msg=(
+                    "\n"
+                    + "-" * 72
+                    + "\n"
+                    + "The waiting on weather event has been skipped because:\n"
+                    + "    (1) the dataset did not provide any sufficient window.\n"
+                    + "    (2) the dataset is to short.\n"
+                    + "Consider lowering the activity duration to test if runs properly.\n"
+                    + "-" * 72
+                    + "\n"
+                ),
+                exc_info=e,
+            )
+            return 0
+
+        # Any other error will be resolved by returning no delay.
+        except Exception as e:
+            logger.debug(
+                msg=(
+                    "The waiting on weather event has been skipped for unknown reasons.\n"
+                ),
+                exc_info=e,
+            )
+            return 0
