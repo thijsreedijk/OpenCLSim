@@ -2,18 +2,14 @@
 # -------------------------------------------------------------------------------------!
 
 import datetime as dt
-
+import logging
+from inspect import getfullargspec
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 
-import numpy as np
-
 import openclsim.model as model
-
-from inspect import getfullargspec
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +224,8 @@ class HasOperationalLimits(object):
         self.weather_resource = weather_resource
 
         # Add activity to database of weather resource.
-        self.weather_resource.store_activity(id=self.id, limit_expr=limit_expr)
+        if self.name not in weather_resource.activity_database.keys():
+            self.weather_resource.store_activity(id=self.name, limit_expr=limit_expr)
 
 
 # -------------------------------------------------------------------------------------!
@@ -265,7 +262,7 @@ class RequestWindowPluginActivity(model.AbstractPluginClass):
         """Apply the activity prior to the actual activity."""
         # Find the required delay.
         activity_delay = self.weather_resource.next_suitable_window(
-            env=env, id=activity.id, window_length=activity.duration
+            env=env, id=activity.name, window_length=activity.duration
         )
 
         activity_label = {"type": "plugin", "ref": "waiting on weather"}
@@ -359,7 +356,7 @@ class WeatherResource(object):
     def store_information(self, data: pd.DataFrame = None, *args, **kwargs):
         """
         Store information in the conditions database.
-        
+
         Stores relevant data in the database. Requires the data-argument
         to be a pandas.DataFrame that has at least a `datetime` column.
         """
