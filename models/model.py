@@ -6,6 +6,7 @@ import dateutil.tz as tz
 import numpy as np
 import pandas as pd
 import simpy
+import xarray as xr
 
 import openclsim.model as model
 import openclsim.plot as plot
@@ -116,7 +117,7 @@ class HydroDynamicModel(object):
         super().__init__(*args, **kwargs)
 
         # Limits for MPI Adventure lifting operations.
-        self.set_response_limits(
+        self.response_limits(
             type=["accelerations", "displacements"],
             surge=[0.1378, np.inf],
             sway=[0.2063, np.inf],
@@ -126,11 +127,11 @@ class HydroDynamicModel(object):
             yaw=[0.0039, np.inf],
         )
 
-    def estimate_irregular_response(self, *args, **kwargs):
-        """Estimate the dynamic response motions."""
+    def irregular_response(self, *args, **kwargs):
+        """Estimate the irregular response motions."""
         pass
 
-    def estimate_regular_response(
+    def regular_response(
         self, operators, height, period, direction, theta, *args, **kwargs
     ):
         """Estimate the regular motion response."""
@@ -140,7 +141,7 @@ class HydroDynamicModel(object):
         """Define the operational limits."""
         pass
 
-    def set_response_limits(
+    def response_limits(
         self,
         type: str = "accelerations",  # Otherwise "displacements".
         surge: float = None,  # [m/s²] or [m]
