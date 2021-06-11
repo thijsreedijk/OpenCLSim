@@ -6,7 +6,8 @@ import dateutil.tz as tz
 import numpy as np
 import pandas as pd
 import simpy
-import xarray as xr
+from hydro_model import HydroModel
+from utils import get_event_log
 
 import openclsim.model as model
 import openclsim.plot as plot
@@ -32,21 +33,41 @@ class DESModel(object):
         self.env = simpy.Environment(initial_time=self.epoch)
         self.registry = {}
 
-    def resources(self, *args, **kwargs):
+    def resources(self, kind="response_motions", *args, **kwargs):
         """Define the DES-resources."""
         self.weather_resource = plugins.WeatherResource()
 
-        # Import DHI's HKZ dataset.
-        HKZ = pd.read_csv(
-            "./data/raw/HKZ_3.970372E_52.014651N.csv",
-            skiprows=[0],
-            parse_dates={"datetime": ["YYYY", "M", "D", "HH", "MM", "SS"]},
-            date_parser=lambda x: dt.datetime.strptime(x, "%Y %m %d %H %M %S"),
+        # Setup the hydrodynamic model.
+        self.HM = HydroModel(
+            parse_raos="./data/preprocessed/MPI_Adventure_RAO.csv",
+            parse_waves="./data/raw/HKZ_3.970372E_52.014651N.csv",
+            parse_limits="./data/raw/MPI_limits.xlsx",
         )
 
-        self.weather_resource.store_information(data=HKZ)
+        # Compute response motions
+        if isinstance(kind, str) and kind == "response_motions":
+            response_motions = self.HM.response_motions(
+                method="mean-wave-dir", type="accelerations"
+            )
 
-    def processes(self, limit_expr=None, *args, **kwargs):
+            # Define limits.
+            self.limits = self.HM.RAO_limit_expression
+
+            # Store response motions in resource.
+            self.weather_resource.store_information(response_motions.reset_index())
+
+        # Use allowable sea state limits instead.
+        elif isinstance(kind, str) and kind == "allowable_sea_state":
+
+            # Define limits.
+            self.limits = self.HM.sea_state_limit_expression
+
+            # Store weather conditions in resource.
+            self.weather_resource.store_information(
+                self.HM.waves_dataframe.reset_index()
+            )
+
+    def processes(self, *args, **kwargs):
         """Define DES-processes."""
 
         self.process = BasicActivity(
@@ -55,8 +76,10 @@ class DESModel(object):
             name="example process.",
             duration=3600,
             weather_resource=self.weather_resource,
-            limit_expr=limit_expr,
+            limit_expr=self.limits,
         )
+
+        self.proc = [self.process]
 
         model.register_processes(self.process)
 
@@ -98,6 +121,58 @@ class DESModel(object):
         # Return the difference.
         return stop - start
 
+    def get_timeline(self, *args, **kwargs):
+        """Create a timeline from activity log."""
+        # Read out the activities.
+        dataframe = get_event_log(self.proc)
+
+        # Find activity blocks.
+        condlist = [
+            dataframe["ActivityState"] == "WAIT_START",
+            dataframe["ActivityState"] == "START",
+            (dataframe["ActivityState"] != "WAIT_START")
+            | (dataframe["ActivityState"] != "START"),
+        ]
+        choicelist = [1, 1, 0]
+        dataframe["block"] = np.select(condlist, choicelist).cumsum()
+
+        # Find the waiting on weather events.
+        condlist = [
+            (dataframe["ActivityState"] == "WAIT_START")
+            | (dataframe["ActivityState"] == "WAIT_STOP"),
+            (dataframe["ActivityState"] != "WAIT_START")
+            & (dataframe["ActivityState"] != "WAIT_STOP"),
+        ]
+        choicelist = ["Waiting on weather", dataframe["Description"]]
+
+        dataframe["Description"] = np.select(condlist, choicelist)
+
+        # Use groupby to obtain a timeline.
+        timeline = pd.DataFrame(
+            {
+                "start": dataframe.groupby("block")["Timestamp"].first(),
+                "stop": dataframe.groupby("block")["Timestamp"].last(),
+                "description": dataframe.groupby("block")["Description"].first(),
+            }
+        )
+
+        # Calculate duration of each.
+        timeline["duration"] = timeline["stop"] - timeline["start"]
+
+        # Return timeline
+        return timeline
+
+    def get_downtime(self, *args, **kwargs):
+        """Compute weather downtime from timeline."""
+        # Find timeline.
+        timeline = self.get_timeline()
+
+        # Select weather downtime activities.
+        selection = timeline.loc[timeline["description"] == "Waiting on weather"]
+
+        # Compute the total downtime duration and return.
+        return selection["duration"].sum()
+
 
 # -------------------------------------------------------------------------------------!
 class BasicActivity(plugins.HasRequestWindowPluginActivity, model.BasicActivity):
@@ -106,62 +181,3 @@ class BasicActivity(plugins.HasRequestWindowPluginActivity, model.BasicActivity)
     def __init__(self, *args, **kwargs):
         """Class constructor."""
         super().__init__(*args, **kwargs)
-
-
-# -------------------------------------------------------------------------------------!
-class HydroDynamicModel(object):
-    """Model the vessel motion response to wave loads."""
-
-    def __init__(self, *args, **kwargs) -> None:
-        """Class constructor."""
-        super().__init__(*args, **kwargs)
-
-        # Limits for MPI Adventure lifting operations.
-        self.response_limits(
-            type=["accelerations", "displacements"],
-            surge=[0.1378, np.inf],
-            sway=[0.2063, np.inf],
-            heave=[0.5115, 1],
-            roll=[0.005, np.radians(0.50)],
-            pitch=[0.01, np.radians(0.20)],
-            yaw=[0.0039, np.inf],
-        )
-
-    def irregular_response(self, *args, **kwargs):
-        """Estimate the irregular response motions."""
-        pass
-
-    def regular_response(
-        self, operators, height, period, direction, theta, *args, **kwargs
-    ):
-        """Estimate the regular motion response."""
-        pass
-
-    def limit_expression(self, *args, **kwargs):
-        """Define the operational limits."""
-        pass
-
-    def response_limits(
-        self,
-        type: str = "accelerations",  # Otherwise "displacements".
-        surge: float = None,  # [m/s²] or [m]
-        sway: float = None,  # [m/s²] or [m]
-        heave: float = None,  # [m/s²] or [m]
-        yaw: float = None,  # [rad/s²] or [rad]
-        roll: float = None,  # [rad/s²] or [rad]
-        pitch: float = None,  # [rad/s²] or [rad]
-        *args,
-        **kwargs
-    ):
-        """Impose response limits."""
-        self.motion_limits = pd.DataFrame(
-            dict(
-                type=type,
-                surge=surge,
-                sway=sway,
-                heave=heave,
-                roll=roll,
-                pitch=pitch,
-                yaw=yaw,
-            )
-        )
