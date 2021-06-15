@@ -42,7 +42,7 @@ class DESModel(object):
         self.bury_export_cable_duration = 10 * 3600  # [sec]
 
         # Define size of the activities.
-        self.cable_segments = 25
+        self.cable_segments = 1
 
     def resources(self, kind="response_motions", *args, **kwargs):
         """Define the DES-resources."""

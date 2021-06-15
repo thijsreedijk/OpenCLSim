@@ -45,31 +45,79 @@ class DESModel(object):
         """Define the DES-resources."""
         self.weather_resource = plugins.WeatherResource()
 
-        # Find response motions of tower.
-        self.HM = HydroModel(
-            parse_waves="./data/raw/HKZ_3.970372E_52.014651N.csv",
-            parse_raos="./data/raw/RAO.xlsx",
+        # Import wave data.
+        wave_df = pd.read_csv(
+            "./data/raw/HKZ_3.970372E_52.014651N.csv",
+            skiprows=[0],
+            parse_dates={"datetime": ["YYYY", "M", "D", "HH", "MM", "SS"]},
+            date_parser=lambda x: dt.datetime.strptime(x, "%Y %m %d %H %M %S"),
+        ).set_index("datetime")
+
+        # Remove NaN values.
+        cols = (wave_df < 0).any()[lambda x: x].index
+        wave_df[cols] = wave_df[cols].where(wave_df[cols] >= 0, 0)
+
+        # Import RAO.
+        response_amplitude_operator = pd.read_excel(
+            "./data/raw/RAO.xlsx", skiprows=[0, 2]
         )
 
-        if isinstance(kind, str) and kind == "response_motions":
-            response_motions = self.HM.response_motions()
+        # Build dataset.
+        dataset = wave_df.to_xarray()
 
-            # Limit expression.
-            self.limits = lambda displacement: displacement >= 0.03
+        dataset["RAO"] = xr.DataArray(
+            data=response_amplitude_operator["RAO"],
+            dims="freq",
+            coords=dict(freq=response_amplitude_operator["Tp"]),
+        )
 
-            # Store response motions in resource.
-            self.weather_resource.store_information(response_motions.reset_index())
+        max_displacement = 0.05  # [m] -> amplitude!
 
-        # Use allowable sea state limits instead.
-        elif isinstance(kind, str) and kind == "allowable_sea_state":
+        # If kind == "allowable_sea_state".
+        if kind == "allowable_sea_state":
 
-            # Define limits.
-            self.limits = self.HM.sea_state_limit_expression
+            dataset["Hm0_limit"] = max_displacement / dataset["RAO"]
 
-            # Store weather conditions in resource.
-            self.weather_resource.store_information(
-                self.HM.waves_dataframe.reset_index()
+            def sea_state_limit(Hm0, Tp):
+                Hs_limit = dataset["Hm0_limit"].interp(dict(freq=Tp))
+                return Hm0 >= Hs_limit
+
+            self.limits = sea_state_limit
+
+            self.weather_resource.store_information(wave_df.reset_index())
+
+        # Elif kind == "response_motions".
+        elif kind == "response_motions":
+
+            # Compute response motions.
+            dataset["swell_response"] = (
+                dataset["RAO"].interp(
+                    dict(freq=dataset["TpS"]), kwargs=dict(fill_value=np.nan)
+                )
+                * dataset["Hm0S"]
             )
+
+            dataset["windsea_response"] = (
+                dataset["RAO"].interp(
+                    dict(freq=dataset["TpWS"]), kwargs=dict(fill_value=np.nan)
+                )
+                * dataset["Hm0WS"]
+            )
+
+            dataset["total_response"] = (
+                dataset["windsea_response"] + dataset["swell_response"]
+            )
+
+            dataframe = (
+                dataset["total_response"]
+                .to_dataframe()
+                .rename_axis("datetime")
+                .reset_index()
+            )
+
+            self.weather_resource.store_information(dataframe)
+
+            self.limits = lambda total_response: total_response >= max_displacement
 
     def define_sites(self, *args, **kwargs):
         """Define sites involved in construction."""
@@ -431,146 +479,6 @@ class DESModel(object):
 
         # Compute the total downtime duration and return.
         return selection["duration"].sum()
-
-
-# -------------------------------------------------------------------------------------!
-class HydroModel(object):
-    def __init__(
-        self, parse_waves: str = None, parse_raos: str = None, *args, **kwargs
-    ) -> None:
-        super().__init__(*args, **kwargs)
-
-        # Try to import wave dataset.
-        if isinstance(parse_waves, str) and os.path.isfile(parse_waves):
-            try:
-                self.waves_dataframe = self.parse_wave_data(file=parse_waves)
-            except Exception as e:
-                logger.debug(msg="Import of wave data went wrong.", exc_info=e)
-                self.waves_dataframe = None
-
-        # Try to import structure RAOs.
-        if isinstance(parse_raos, str) and os.path.isfile(parse_raos):
-            try:
-                self.RAOs = self.parse_rao(file=parse_raos)
-            except Exception as e:
-                logger.debug(msg="Import of RAOs went wrong.", exc_info=e)
-                self.RAOs = None
-
-        # Try to combine both datasets.
-        if (
-            hasattr(self, "RAOs")
-            and isinstance(self.RAOs, (pd.DataFrame, xr.DataArray))
-            and isinstance(self.waves_dataframe, (pd.DataFrame, xr.DataArray))
-        ):
-            try:
-                self.data = self.build_dataset()
-            except Exception as e:
-                logger.debug(
-                    msg="Combining of RAOs and wave data went wrong", exc_info=e
-                )
-
-    def parse_wave_data(self, file, *args, **kwargs):
-        """Read the contents of a DHI wave data file."""
-        # Make sure not to reload the data.
-        if hasattr(self, "wave"):
-            return self.wave
-
-        # Import wave data.
-        df = pd.read_csv(
-            file,
-            skiprows=[0],
-            parse_dates={"datetime": ["YYYY", "M", "D", "HH", "MM", "SS"]},
-            date_parser=lambda x: dt.datetime.strptime(x, "%Y %m %d %H %M %S"),
-        ).set_index("datetime")
-
-        # Return the result.
-        return df
-
-    def parse_rao(self, file, *args, **kwargs):
-        """Read the contents of a response amplitude operator file."""
-        # Make sure not to reload the data.
-        if hasattr(self, "RAO"):
-            return self.RAO
-
-        df = pd.read_excel(file, skiprows=[0, 2])
-        df = df.set_index("Tp")
-        df.columns = ["RAO"]
-
-        self.hstp_limit = (0.05 / df["RAO"]).to_xarray()
-
-        return df
-
-    def build_dataset(self):
-        """Combine wave and RAO data in a xarray.Dataset."""
-        # Make sure not to recreate the dataset.
-        if hasattr(self, "data"):
-            return self.data
-
-        ds = xr.Dataset(
-            data_vars=dict(
-                wave_data=(["time", "parameter"], self.waves_dataframe),
-                tower_rao=(["Tp", "RAO"], self.RAOs),
-            ),
-            coords=dict(
-                time=self.waves_dataframe.index.values,
-                parameter=self.waves_dataframe.columns.values,
-                Tp=self.RAOs.index.values,
-            ),
-        )
-
-        return ds
-
-    def response_motions(self, *args, **kwargs):
-
-        # Compute windsea / swell response.
-        windsea_resp = (
-            self.data["tower_rao"].interp(
-                dict(Tp=self.data["wave_data"].sel(dict(parameter="TpWS"))),
-                kwargs=dict(fill_value=0),
-            )
-            * self.data["wave_data"].sel(dict(parameter="Hm0WS"))
-        ).values.flatten()
-
-        swell_resp = (
-            self.data["tower_rao"].interp(
-                dict(Tp=self.data["wave_data"].sel(dict(parameter="TpS"))),
-                kwargs=dict(fill_value=0),
-            )
-            * self.data["wave_data"].sel(dict(parameter="Hm0S"))
-        ).values.flatten()
-
-        windsea_angle = (
-            self.data["wave_data"].sel(dict(parameter="MWDWS")).values.flatten()
-        )
-        swell_angle = (
-            self.data["wave_data"].sel(dict(parameter="MWDS")).values.flatten()
-        )
-
-        # Compute the coupled response.
-        total = resultant_vector(windsea_resp, swell_resp, windsea_angle, swell_angle)
-
-        # Make sure to use the largest amplitude.
-        choicelist = [windsea_resp, swell_resp, total]
-        condlist = [
-            windsea_resp >= total,
-            swell_resp >= total,
-            (windsea_resp < total) & (swell_resp < total),
-        ]
-        motion = np.select(condlist=condlist, choicelist=choicelist)
-
-        df = pd.DataFrame(
-            data=self.data["wave_data"].values,
-            columns=self.data["parameter"].values,
-            index=self.data["time"].values,
-        ).rename_axis("datetime")
-
-        df["displacement"] = motion
-
-        return df
-
-    def sea_state_limit_expression(self, Hm0, Tp, *args, **kwargs):
-        hs_lim = self.hstp_limit.interp(dict(Tp=Tp), kwargs=dict(fill_value=0))
-        return Hm0 >= hs_lim
 
 
 # -------------------------------------------------------------------------------------!

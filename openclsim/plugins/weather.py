@@ -330,7 +330,8 @@ class WeatherResource(object):
         blocks = pd.DataFrame(
             dict(
                 start_date=d.groupby("block")["Timestamp"].first(),
-                stop_date=d.groupby("block")["Timestamp"].last(),
+                stop_date=d.groupby("block")["Timestamp"].last()
+                + pd.Timedelta(hours=1),  # +1 because last() isn't appropriate
                 violated=d.groupby("block")["violated"].first(),
             )
         )
