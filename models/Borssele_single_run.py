@@ -1,19 +1,23 @@
 """OpenCLSim example for multiprocessing."""
 # -------------------------------------------------------------------------------------!
 import datetime as dt
+import logging
+import os
 
 import dateutil.tz as tz
 import numpy as np
 import pandas as pd
 import shapely
 import simpy
-from hydro_model import HydroModel
+import xarray as xr
 from utils import get_event_log
 
 import openclsim.core as core
 import openclsim.model as model
 import openclsim.plot as plot
 import openclsim.plugins as plugins
+
+logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------------------------!
@@ -29,53 +33,91 @@ class DESModel(object):
             self.start_date = start_date.replace(tzinfo=tz.UTC)
             self.epoch = self.start_date.timestamp()
         except Exception:
-            self.start_date = dt.datetime(2018, 1, 1).replace(tzinfo=tz.UTC)
+            self.start_date = dt.datetime(2010, 1, 1).replace(tzinfo=tz.UTC)
             self.epoch = self.start_date.timestamp()
 
         self.env = simpy.Environment(initial_time=self.epoch)
         self.registry = {}
 
-        # Define activity lengths.
-        self.launch_activity_duration = 1 * 3600  # [sec]
-        self.recover_activity_duration = 1 * 3600  # [sec]
-        self.bury_export_cable_duration = 10 * 3600  # [sec]
-
-        # Define size of the activities.
-        self.cable_segments = 1
+        self.size = 1
 
     def resources(self, kind="response_motions", *args, **kwargs):
         """Define the DES-resources."""
         self.weather_resource = plugins.WeatherResource()
 
-        # Setup the hydrodynamic model.
-        self.HM = HydroModel(
-            parse_raos="./data/preprocessed/MPI_Adventure_RAO.csv",
-            parse_waves="./data/raw/HKZ_3.970372E_52.014651N.csv",
-            parse_limits="./data/raw/MPI_limits.xlsx",
+        # Import wave data.
+        wave_df = pd.read_csv(
+            "./data/raw/HKZ_3.970372E_52.014651N.csv",
+            skiprows=[0],
+            parse_dates={"datetime": ["YYYY", "M", "D", "HH", "MM", "SS"]},
+            date_parser=lambda x: dt.datetime.strptime(x, "%Y %m %d %H %M %S"),
+        ).set_index("datetime")
+
+        # Remove NaN values.
+        cols = (wave_df < 0).any()[lambda x: x].index
+        wave_df[cols] = wave_df[cols].where(wave_df[cols] >= 0, 0)
+
+        # Import RAO.
+        response_amplitude_operator = pd.read_excel(
+            "./data/raw/Tower_RAO.xlsx", skiprows=[0, 2]
         )
 
-        # Compute response motions
-        if isinstance(kind, str) and kind == "response_motions":
-            response_motions = self.HM.response_motions(
-                method="mean-wave-dir", type="displacements"
+        # Build dataset.
+        dataset = wave_df.to_xarray()
+
+        dataset["RAO"] = xr.DataArray(
+            data=response_amplitude_operator["RAO"],
+            dims="freq",
+            coords=dict(freq=response_amplitude_operator["Tp"]),
+        )
+
+        max_displacement = 0.035  # [m] -> amplitude!
+
+        # If kind == "allowable_sea_state".
+        if kind == "allowable_sea_state":
+
+            dataset["Hm0_limit"] = max_displacement / dataset["RAO"]
+
+            def sea_state_limit(Hm0, Tp):
+                Hs_limit = dataset["Hm0_limit"].interp(dict(freq=Tp))
+                return Hm0 >= Hs_limit
+
+            self.limits = sea_state_limit
+
+            self.weather_resource.store_information(wave_df.reset_index())
+
+        # Elif kind == "response_motions".
+        elif kind == "response_motions":
+
+            # Compute response motions.
+            dataset["swell_response"] = (
+                dataset["RAO"].interp(
+                    dict(freq=dataset["TpS"]), kwargs=dict(fill_value=np.nan)
+                )
+                * dataset["Hm0S"]
             )
 
-            # Define limits.
-            self.limits = self.HM.RAO_limit_expression
-
-            # Store response motions in resource.
-            self.weather_resource.store_information(response_motions.reset_index())
-
-        # Use allowable sea state limits instead.
-        elif isinstance(kind, str) and kind == "allowable_sea_state":
-
-            # Define limits.
-            self.limits = self.HM.sea_state_limit_expression
-
-            # Store weather conditions in resource.
-            self.weather_resource.store_information(
-                self.HM.waves_dataframe.reset_index()
+            dataset["windsea_response"] = (
+                dataset["RAO"].interp(
+                    dict(freq=dataset["TpWS"]), kwargs=dict(fill_value=np.nan)
+                )
+                * dataset["Hm0WS"]
             )
+
+            dataset["total_response"] = (
+                dataset["windsea_response"] + dataset["swell_response"]
+            )
+
+            dataframe = (
+                dataset["total_response"]
+                .to_dataframe()
+                .rename_axis("datetime")
+                .reset_index()
+            )
+
+            self.weather_resource.store_information(dataframe)
+
+            self.limits = lambda total_response: total_response >= max_displacement
 
     def define_sites(self, *args, **kwargs):
         """Define sites involved in construction."""
@@ -84,9 +126,11 @@ class DESModel(object):
             env=self.env,
             name="Port of Rotterdam",
             geometry=shapely.geometry.Point(0, 0),
-            store_capacity=1,
+            store_capacity=3,
             initials=[
-                {"id": "Cable segments", "level": 0, "capacity": self.cable_segments}
+                {"id": "tower", "level": self.size, "capacity": self.size},
+                {"id": "nacelle", "level": self.size, "capacity": self.size},
+                {"id": "blade", "level": 3 * self.size, "capacity": 3 * self.size},
             ],
             nr_resources=1,
         )
@@ -94,30 +138,28 @@ class DESModel(object):
         # Define construction site.
         self.owf = Site(
             env=self.env,
-            name="Offshore Wind Farm",
+            name="Borssele Offshore Wind Farm",
             geometry=shapely.geometry.Point(0, 0),
-            store_capacity=2,
+            store_capacity=3,
             initials=[
-                {"id": "Deep Dig-It", "level": 0, "capacity": 1},
-                {"id": "Cable segments", "level": 0, "capacity": self.cable_segments},
+                {"id": "tower", "level": 0, "capacity": self.size},
+                {"id": "nacelle", "level": 0, "capacity": self.size},
+                {"id": "blade", "level": 0, "capacity": self.size * 3},
             ],
             nr_resources=1,
         )
 
-    def define_equipment(self, MPI_RAO=None, *args, **kwargs):
-        # Define the MPI equipment.
-        self.mpi = InstallationEquipment(
+    def define_equipment(self, *args, **kwargs):
+        # Define the Aeolus equipment.
+        self.aeolus = InstallationEquipment(
             env=self.env,
-            name="MPI Adventure - Deep Dig-It",
+            name="Aeolus",
             geometry=shapely.geometry.Point(0, 0),
-            store_capacity=2,
+            store_capacity=3,
             initials=[
-                {"id": "Deep Dig-It", "level": 1, "capacity": 1},
-                {
-                    "id": "Cable segments",
-                    "level": self.cable_segments,
-                    "capacity": self.cable_segments,
-                },
+                {"id": "tower", "level": 1, "capacity": 1},
+                {"id": "nacelle", "level": 1, "capacity": 1},
+                {"id": "blade", "level": 3, "capacity": 3},
             ],
             nr_resources=1,
             loading_rate=1,
@@ -125,71 +167,111 @@ class DESModel(object):
             compute_v=10,
         )
 
-    def processes(self, *args, **kwargs):
+    def define_processes(self, *args, **kwargs):
         """Define DES-processes."""
 
-        # Define launch activity.
-        self.launch_activity = TransferObject(
+        # Define arriving process.
+        self.positioning = model.BasicActivity(
             env=self.env,
             registry=self.registry,
-            name="Launch Deep Dig-It",
-            duration=self.launch_activity_duration,
-            processor=self.mpi,
-            origin=self.mpi,
+            name="Positioning on site",
+            duration=1.5 * 3600,
+        )
+
+        self.jacking_up = model.BasicActivity(
+            env=self.env,
+            registry=self.registry,
+            name="Jacking up",
+            duration=3.00 * 3600,
+        )
+
+        # Define departure process.
+        self.jacking_down = model.BasicActivity(
+            env=self.env,
+            registry=self.registry,
+            name="Jacking down",
+            duration=1.50 * 3600,
+        )
+
+        # Define installation process.
+        self.install_tower = model.ShiftAmountActivity(
+            env=self.env,
+            registry=self.registry,
+            name="Install tower",
+            duration=5 * 3600,
+            processor=self.aeolus,
+            origin=self.aeolus,
             destination=self.owf,
             amount=1,
-            id_="Deep Dig-It",
+            id_="tower",
+        )
+
+        self.install_nacelle = model.ShiftAmountActivity(
+            env=self.env,
+            registry=self.registry,
+            name="Install nacelle",
+            duration=4 * 3600,
+            processor=self.aeolus,
+            origin=self.aeolus,
+            destination=self.owf,
+            amount=1,
+            id_="nacelle",
+        )
+
+        self.install_blade = TransferObject(
+            env=self.env,
+            registry=self.registry,
+            name="Install blades",
+            duration=1 * 3600,
+            processor=self.aeolus,
+            origin=self.aeolus,
+            destination=self.owf,
+            amount=1,
+            id_="blade",
             weather_resource=self.weather_resource,
             limit_expr=self.limits,
         )
 
-        # Define burying activity.
-        self.bury_export_cable = model.ShiftAmountActivity(
+        self.install_blades = model.WhileActivity(
             env=self.env,
             registry=self.registry,
-            name="Bury export cable",
-            duration=self.bury_export_cable_duration,
-            processor=self.mpi,
-            origin=self.mpi,
-            destination=self.owf,
-            amount=1,
-            id_="Cable segments",
-        )
-
-        # Define recover activity.
-        self.recover_activity = TransferObject(
-            env=self.env,
-            registry=self.registry,
-            name="Recover Deep Dig-It",
-            duration=self.recover_activity_duration,
-            processor=self.mpi,
-            origin=self.owf,
-            destination=self.mpi,
-            amount=1,
-            id_="Deep Dig-It",
-            weather_resource=self.weather_resource,
-            limit_expr=self.limits,
-        )
-
-        self.cycle = model.SequentialActivity(
-            env=self.env,
-            registry=self.registry,
-            name="Installation sequence",
-            sub_processes=[
-                self.launch_activity,
-                self.bury_export_cable,
-                self.recover_activity,
+            name="Install blades cycle",
+            sub_processes=[self.install_blade],
+            condition_event=[
+                {
+                    "type": "container",
+                    "concept": self.aeolus,
+                    "state": "empty",
+                    "id_": "blade",
+                }
             ],
         )
 
-        # Register activities.
-        self.proc = [
-            self.launch_activity,
-            self.bury_export_cable,
-            self.recover_activity,
-        ]
+        # Define full cycle
+        self.project_cycle = model.SequentialActivity(
+            env=self.env,
+            registry=self.registry,
+            name="Project cycle",
+            sub_processes=[
+                self.positioning,
+                self.jacking_up,
+                self.install_tower,
+                self.install_nacelle,
+                self.install_blades,
+                self.jacking_down,
+            ],
+        )
 
-        model.register_processes([self.cycle])
+        model.register_processes([self.project_cycle])
+
+        self.proc = [
+            self.positioning,
+            self.jacking_up,
+            self.jacking_down,
+            self.install_tower,
+            self.install_nacelle,
+            self.install_blade,
+        ]
 
     def start_simulation(self, *args, **kwargs):
         """Start the discrete-event simulation."""
@@ -214,7 +296,7 @@ class DESModel(object):
         # Redefine the processes.
         self.define_sites()
         self.define_equipment()
-        self.processes()
+        self.define_processes()
 
         # Run simulation.
         self.start_simulation()
@@ -222,7 +304,7 @@ class DESModel(object):
     def project_length(self, *args, **kwargs):
         """Retrieve the project length."""
         # Extract the event log.
-        log = plot.get_log_dataframe(self.cycle)
+        log = plot.get_log_dataframe(self.project_cycle)
 
         # Find start and stop-dates.
         start = log["Timestamp"].iloc[0]
@@ -234,7 +316,9 @@ class DESModel(object):
     def get_timeline(self, *args, **kwargs):
         """Create a timeline from activity log."""
         # Read out the activities.
-        dataframe = get_event_log(self.proc)
+        dataframe = get_event_log(
+            activity_list=self.proc, entities=[self.aeolus, self.port, self.owf]
+        )
 
         # Find activity blocks.
         condlist = [

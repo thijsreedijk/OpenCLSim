@@ -39,7 +39,7 @@ class DESModel(object):
         self.env = simpy.Environment(initial_time=self.epoch)
         self.registry = {}
 
-        self.size = 1
+        self.size = 32
 
     def resources(self, kind="response_motions", *args, **kwargs):
         """Define the DES-resources."""
@@ -59,7 +59,7 @@ class DESModel(object):
 
         # Import RAO.
         response_amplitude_operator = pd.read_excel(
-            "./data/raw/RAO.xlsx", skiprows=[0, 2]
+            "./data/raw/Tower_RAO.xlsx", skiprows=[0, 2]
         )
 
         # Build dataset.
@@ -71,7 +71,7 @@ class DESModel(object):
             coords=dict(freq=response_amplitude_operator["Tp"]),
         )
 
-        max_displacement = 0.05  # [m] -> amplitude!
+        max_displacement = 0.03  # [m] -> amplitude!
 
         # If kind == "allowable_sea_state".
         if kind == "allowable_sea_state":
@@ -297,18 +297,26 @@ class DESModel(object):
             id_="nacelle",
         )
 
-        self.install_blades = TransferObject(
+        self.install_blade = TransferObject(
             env=self.env,
             registry=self.registry,
             name="Install blades",
-            duration=3 * 3600,
+            duration=2 * 3600,
             processor=self.aeolus,
             origin=self.aeolus,
             destination=self.owf,
-            amount=3,
+            amount=1,
             id_="blade",
             weather_resource=self.weather_resource,
             limit_expr=self.limits,
+        )
+
+        self.install_blades = model.RepeatActivity(
+            env=self.env,
+            registry=self.registry,
+            name="Install blades cycle",
+            sub_processes=[self.install_blade],
+            repetitions=3,
         )
 
         self.install_cycle = model.WhileActivity(
@@ -383,7 +391,7 @@ class DESModel(object):
             self.jacking_down,
             self.install_tower,
             self.install_nacelle,
-            self.install_blades,
+            self.install_blade,
         ]
 
     def start_simulation(self, *args, **kwargs):
